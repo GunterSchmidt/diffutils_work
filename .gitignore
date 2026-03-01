@@ -1,0 +1,9 @@
+/target
+*.swp
+new.txt
+old.txt
+
+tools/app_option_generator/cmp_help.options.txt
+tools/app_option_generator/diff_help.options.txt
+tools/app_option_generator/output.txt
+tools/app_option_generator/sdiff-help.options.txt

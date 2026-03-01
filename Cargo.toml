@@ -1,0 +1,56 @@
+[package]
+name = "diffutils"
+version = "0.5.0"
+edition = "2021"
+description = "A CLI app for generating diff files"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/uutils/diffutils"
+
+[lib]
+name = "diffutilslib"
+path = "src/lib.rs"
+
+[[bin]]
+name = "diffutils"
+path = "src/main.rs"
+
+[dependencies]
+chrono = "0.4.38"
+diff = "0.1.13"
+itoa = "1.0.11"
+regex = "1.10.4"
+same-file = "1.0.6"
+unicode-width = "0.2.0"
+
+[dev-dependencies]
+assert_cmd = "2.0.14"
+criterion = { version = "0.8.2", features = ["html_reports"] }
+pretty_assertions = "1.4.0"
+predicates = "3.1.0"
+tempfile = "3.26.0"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
+[profile.release-fast]
+inherits = "release"
+panic = "abort"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
+
+[features]
+# default = ["cmp_allow_case_insensitive_byte_units", "cmp_bytes_limit_128_bit"]
+# allows to set the bytes limit from u64 to u128, if limits larger than Exabyte are required. 
+# This needs to be tested but is it feasible to compare such large files?
+cmp_bytes_limit_128_bit = []
+# instead of limiting to KiB, MiB, etc, one can write kib, mib, Mb or whatever case.
+cmp_allow_case_insensitive_byte_units = []
+
+[[bench]]
+name = "bench_cmp"
+path = "benches/benchmarks-cmp.rs"
+harness = false

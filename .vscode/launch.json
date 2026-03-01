@@ -1,0 +1,70 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in library 'diffutilslib'",
+      "cargo": {
+        "args": ["test", "--no-run", "--lib", "--package=diffutils"],
+        "filter": {
+          "name": "diffutilslib",
+          "kind": "lib"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug executable 'diffutils'",
+      "cargo": {
+        "args": ["build", "--bin=diffutils", "--package=diffutils"],
+        "filter": {
+          "name": "diffutils",
+          "kind": "bin"
+        }
+      },
+      "args": ["cmp", "fruits_old.txt", "fruits_new.txt"],
+      // "args": ["cmp", "-b"],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in executable 'diffutils'",
+      "cargo": {
+        "args": ["test", "--no-run", "--bin=diffutils", "--package=diffutils"],
+        "filter": {
+          "name": "diffutils",
+          "kind": "bin"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug integration test 'integration'",
+      "cargo": {
+        "args": [
+          "test",
+          "--no-run",
+          "--test=integration",
+          "--package=diffutils"
+        ],
+        "filter": {
+          "name": "integration",
+          "kind": "test"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}
