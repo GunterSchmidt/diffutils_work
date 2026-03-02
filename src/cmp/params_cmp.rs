@@ -2,8 +2,8 @@ use std::{ffi::OsString, fmt::Display, iter::Peekable};
 
 use crate::{
     arg_parser::{
-        AppOption, ArgParser, ArgParserError, OptionNameTypeUsed, ParseBytesError, ParsedOption,
-        OPT_HELP, OPT_VERSION, TEXT_COPYRIGHT,
+        AppOption, ArgParser, ArgParserError, DiffUtility, OptionNameTypeUsed, ParseBytesError,
+        ParsedOption, OPT_HELP, OPT_VERSION, TEXT_COPYRIGHT,
     },
     cmp::{Bytes, IgnInit, EXE_NAME},
 };
@@ -279,10 +279,11 @@ impl Display for ParamsCmpError {
 }
 
 /// Holds the given command line arguments except "--version" and "--help".
-#[derive(Debug, Default, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ParamsCmp {
     /// Identifier
-    pub executable: OsString,
+    pub util: DiffUtility,
+    // pub executable: OsString,
     pub file_1: OsString,
     pub file_2: OsString,
     /// If None will be set to 0.
@@ -298,6 +299,23 @@ pub struct ParamsCmp {
     pub verbose: bool,
 }
 
+impl Default for ParamsCmp {
+    fn default() -> Self {
+        Self {
+            util: DiffUtility::Cmp,
+            // executable: Default::default(),
+            file_1: Default::default(),
+            file_2: Default::default(),
+            ignore_initial_bytes_file_1: Default::default(),
+            ignore_initial_bytes_file_2: Default::default(),
+            bytes_limit: Default::default(),
+            print_bytes: Default::default(),
+            silent: Default::default(),
+            verbose: Default::default(),
+        }
+    }
+}
+
 impl ParamsCmp {
     pub fn parse_params<I: Iterator<Item = OsString>>(opts: Peekable<I>) -> ResultParamsCmpParse {
         let p_gen = ArgParser::parse_params(&ARG_OPTIONS, opts)?;
@@ -305,10 +323,11 @@ impl ParamsCmp {
     }
 
     fn try_from(p_gen: &ArgParser) -> ResultParamsCmpParse {
-        let mut params = Self {
-            executable: p_gen.executable.clone(),
-            ..Default::default()
-        };
+        let mut params = Self::default();
+        //  {
+        //     // executable: p_gen.executable.clone(),
+        //     ..Default::default()
+        // };
 
         // set options
         for parsed_option in &p_gen.options_parsed {
@@ -339,7 +358,7 @@ impl ParamsCmp {
         match p_gen.operands.len() {
             0 => {
                 return Err(ParamsCmpError::ArgParserError(ArgParserError::NoOperand(
-                    params.executable.to_string_lossy().to_string(),
+                    params.util,
                 )))
             }
             // If only file_1 is set, then file_2 defaults to '-', so it reads from StandardInput.
@@ -599,7 +618,8 @@ mod tests {
         assert_eq!(
             parse("cmp foo bar"),
             res_ok(ParamsCmp {
-                executable: os("cmp"),
+                // util: DiffUtility::Cmp,
+                util: DiffUtility::Cmp,
                 file_1: os("foo"),
                 file_2: os("bar"),
                 ..Default::default()
@@ -610,7 +630,7 @@ mod tests {
         assert_eq!(
             parse("cmp foo"),
             res_ok(ParamsCmp {
-                executable: os("cmp"),
+                util: DiffUtility::Cmp,
                 file_1: os("foo"),
                 file_2: os("-"),
                 ..Default::default()
@@ -622,7 +642,7 @@ mod tests {
         // assert_eq!(
         //     parse_params("cmp foo -- --help"),
         //     res_ok(ParamsCmp {
-        //         executable: os("cmp"),
+        //         util: DiffUtility::Cmp,
         //         file_1: os("foo"),
         //         file_2: os("--help"),
         //         ..Default::default()
@@ -633,7 +653,7 @@ mod tests {
         assert_eq!(
             parse("cmp foo bar 1"),
             res_ok(ParamsCmp {
-                executable: os("cmp"),
+                util: DiffUtility::Cmp,
                 file_1: os("foo"),
                 file_2: os("bar"),
                 ignore_initial_bytes_file_1: Some(1),
@@ -647,7 +667,7 @@ mod tests {
         // assert_eq!(
         //     parse_params("cmp foo bar 1 2Y"),
         //     res_ok(ParamsCmp {
-        //         executable: os("cmp"),
+        //         util: DiffUtility::Cmp,
         //         file_1: os("foo"),
         //         file_2: os("bar"),
         //         skip_bytes_file_1: Some(1),
@@ -660,7 +680,7 @@ mod tests {
         {
             // Ok 128-Bit: --ignore-initial as operands with 1 2Y (which is greater than u64)
             let bytes_limit = ParamsCmp {
-                executable: os("cmp"),
+                util: DiffUtility::Cmp,
                 file_1: os("foo"),
                 file_2: os("bar"),
                 bytes_limit: Some(2 * 1_208_925_819_614_629_174_706_176),
@@ -703,7 +723,7 @@ mod tests {
         assert_eq!(
             parse("cmp"),
             Err(ParamsCmpError::ArgParserError(ArgParserError::NoOperand(
-                "cmp".to_string()
+                DiffUtility::Cmp
             )))
         );
     }
@@ -712,7 +732,7 @@ mod tests {
     fn execution_modes() {
         // --print-bytes
         let print_bytes = ParamsCmp {
-            executable: os("cmp"),
+            util: DiffUtility::Cmp,
             file_1: os("foo"),
             file_2: os("bar"),
             print_bytes: true,
@@ -727,7 +747,7 @@ mod tests {
 
         // --verbose
         let verbose = ParamsCmp {
-            executable: os("cmp"),
+            util: DiffUtility::Cmp,
             file_1: os("foo"),
             file_2: os("bar"),
             verbose: true,
@@ -757,7 +777,7 @@ mod tests {
 
         // --verbose & --print-bytes
         let verbose_and_print_bytes = ParamsCmp {
-            executable: os("cmp"),
+            util: DiffUtility::Cmp,
             file_1: os("foo"),
             file_2: os("bar"),
             print_bytes: true,
@@ -787,7 +807,7 @@ mod tests {
 
         // --silent --quiet
         let silent = ParamsCmp {
-            executable: os("cmp"),
+            util: DiffUtility::Cmp,
             file_1: os("foo"),
             file_2: os("bar"),
             silent: true,
@@ -820,7 +840,7 @@ mod tests {
     /// - cmp file_1 file_2 -bln1kiB
     fn bytes_limit() {
         let mut bytes_limit = ParamsCmp {
-            executable: os("cmp"),
+            util: DiffUtility::Cmp,
             file_1: os("foo"),
             file_2: os("bar"),
             bytes_limit: Some(1000),
@@ -936,7 +956,7 @@ mod tests {
     #[test]
     fn ignore_initial() {
         let mut skips = ParamsCmp {
-            executable: os("cmp"),
+            util: DiffUtility::Cmp,
             file_1: os("foo"),
             file_2: os("bar"),
             ignore_initial_bytes_file_1: Some(1),
@@ -1055,7 +1075,7 @@ mod tests {
                 assert_eq!(
                     parse(&format!("cmp -i 1{}:2 foo bar", suffixes[j])),
                     res_ok(ParamsCmp {
-                        executable: os("cmp"),
+                        util: DiffUtility::Cmp,
                         file_1: os("foo"),
                         file_2: os("bar"),
                         ignore_initial_bytes_file_1: Some(*v),

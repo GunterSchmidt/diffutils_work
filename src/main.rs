@@ -11,6 +11,9 @@ use std::{
     process::ExitCode,
 };
 
+use crate::arg_parser::{DiffUtility, DiffUtilityError};
+// use predicates::name;
+
 mod arg_parser;
 mod cmp;
 mod context_diff;
@@ -70,13 +73,51 @@ fn main() -> ExitCode {
         OsString::from(exe_name)
     };
 
-    match util_name.to_str() {
-        Some("diff") => diff::main(args),
-        Some("cmp") => cmp::main(args),
-        Some(name) => {
-            eprintln!("{name}: utility not supported");
+    match DiffUtility::try_from(&util_name) {
+        Ok(util) => match util {
+            DiffUtility::Cmp => cmp::main(args),
+            DiffUtility::Diff => diff::main(args),
+            // DiffUtility does not allow these, they return an error.
+            DiffUtility::Diff3 => todo!(),
+            DiffUtility::Patch => todo!(),
+            DiffUtility::SDiff => todo!(),
+        },
+        Err(e) => {
+            let name = match &e {
+                DiffUtilityError::NameNotRecognized(name) => name,
+                DiffUtilityError::NotYetSupported(name) => name,
+                DiffUtilityError::Nothing => "diffutils",
+            };
+            eprintln!("{e}");
+            usage(name);
             ExitCode::from(2)
+            // process::exit(2);
         }
-        None => second_arg_error(exe_name),
     }
+
+    //     let mut args = std::env::args_os().peekable();
+    //
+    //     let exe_path = binary_path(&mut args);
+    //     let exe_name = name(&exe_path);
+    //
+    //     let util_name = if exe_name == "diffutils" {
+    //         // Discard the item we peeked.
+    //         let _ = args.next();
+    //
+    //         args.peek()
+    //             .cloned()
+    //             .unwrap_or_else(|| second_arg_error(exe_name))
+    //     } else {
+    //         OsString::from(exe_name)
+    //     };
+    //
+    //     match util_name.to_str() {
+    //         Some("diff") => diff::main(args),
+    //         Some("cmp") => cmp::main(args),
+    //         Some(name) => {
+    //             eprintln!("{name}: utility not supported");
+    //             ExitCode::from(2)
+    //         }
+    //         None => second_arg_error(exe_name),
+    //     }
 }

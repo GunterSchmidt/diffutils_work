@@ -167,7 +167,7 @@ pub enum ArgParserError {
     InvalidOption(String),
 
     /// executable (e.g. cmp) but no args for it
-    NoOperand(String),
+    NoOperand(DiffUtility),
 
     // /// TODO Two dashes '--' without option not allowed. GNU cmp has somewhat undefined behavior, this is cleaner.
     // OptionUndefined(String),
@@ -189,6 +189,12 @@ impl ArgParserError {
         )
     }
 }
+
+// impl From<DiffUtilityError> for ArgParserError {
+//     fn from(e: DiffUtilityError) -> Self {
+//         Self::NoExecutable
+//     }
+// }
 
 impl Display for ArgParserError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -263,9 +269,11 @@ pub enum ParseBytesError {
     InvalidUnit,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ArgParser {
-    pub executable: OsString,
+    pub util: DiffUtility,
+    // #[deprecated(note = "use util")]
+    // pub executable: OsString,
     pub options_parsed: Vec<ParsedOption>,
     pub operands: Vec<OsString>, // pub arg_options: &'a [ArgOption],
 }
@@ -275,13 +283,19 @@ impl ArgParser {
         app_options: &'static [AppOption],
         mut args: Peekable<I>,
     ) -> ResultParamsGenParse {
+        // TODO This cannot happen here, it is an error of the main before calling this module.
         let Some(name_executable) = args.next() else {
             return Err(ArgParserError::NoExecutable);
         };
+        let util = match DiffUtility::try_from(&name_executable) {
+            Ok(u) => u,
+            Err(_) => return Err(ArgParserError::NoExecutable),
+        };
         let mut arg_parser = Self {
-            executable: name_executable,
-            // arg_options: options,
-            ..Default::default()
+            util,
+            // executable: name_executable,
+            options_parsed: Vec::new(),
+            operands: Vec::new(),
         };
 
         while let Some(param_os) = args.next() {
@@ -333,10 +347,18 @@ impl ArgParser {
 
                                     // identified unique option
                                     if *p_opt.app_option == OPT_HELP {
-                                        return Ok(arg_parser.help());
+                                        arg_parser.options_parsed = vec![ParsedOption {
+                                            app_option: &OPT_HELP,
+                                            arg_for_option: None,
+                                            name_type_used: OptionNameTypeUsed::LongName,
+                                        }];
+                                        arg_parser.operands.clear();
+
+                                        return Ok(arg_parser);
                                     }
                                     if *p_opt.app_option == OPT_VERSION {
-                                        return Ok(arg_parser.version());
+                                        arg_parser.set_version(OptionNameTypeUsed::LongName);
+                                        return Ok(arg_parser);
                                     }
                                     p_opt.name_type_used = OptionNameTypeUsed::LongName;
                                     p_opt.check_add_arg(&mut args)?;
@@ -350,7 +372,9 @@ impl ArgParser {
                                             Some(opt) => {
                                                 if *opt == OPT_VERSION {
                                                     // return only version
-                                                    return Ok(arg_parser.version());
+                                                    arg_parser
+                                                        .set_version(OptionNameTypeUsed::ShortName);
+                                                    return Ok(arg_parser);
                                                 }
 
                                                 if opt.has_arg {
@@ -419,7 +443,8 @@ impl ArgParser {
                                         // identified unique option
                                         if *opt == OPT_VERSION {
                                             // return only version
-                                            return Ok(arg_parser.version());
+                                            arg_parser.set_version(OptionNameTypeUsed::ShortName);
+                                            return Ok(arg_parser);
                                         }
                                         p_opt.app_option = opt;
                                         p_opt.name_type_used = OptionNameTypeUsed::ShortName;
@@ -444,7 +469,8 @@ impl ArgParser {
 
         if arg_parser.operands.is_empty() {
             return Err(ArgParserError::NoOperand(
-                arg_parser.executable.to_string_lossy().to_string(),
+                // arg_parser.executable.to_string_lossy().to_string(),
+                arg_parser.util,
             ));
         }
 
@@ -469,16 +495,14 @@ impl ArgParser {
     pub fn is_help(&self) -> bool {
         self.options_parsed
             .iter()
-            .find(|opt| *opt.app_option == OPT_HELP)
-            .is_some()
+            .any(|opt| *opt.app_option == OPT_HELP)
     }
 
     #[allow(unused)]
     pub fn is_version(&self) -> bool {
         self.options_parsed
             .iter()
-            .find(|opt| *opt.app_option == OPT_VERSION)
-            .is_some()
+            .any(|opt| *opt.app_option == OPT_VERSION)
     }
 
     /// Parses a number as defined in <https://www.gnu.org/software/diffutils/manual/html_node/cmp-Options.html>. \
@@ -619,27 +643,85 @@ impl ArgParser {
         Ok(multiplier)
     }
 
-    fn help(&self) -> ArgParser {
-        ArgParser {
-            executable: self.executable.clone(),
-            options_parsed: vec![ParsedOption {
-                app_option: &OPT_HELP,
-                arg_for_option: None,
-                name_type_used: OptionNameTypeUsed::ShortName,
-            }],
-            ..Default::default()
+    fn set_version(&mut self, name_type_used: OptionNameTypeUsed) {
+        self.options_parsed = vec![ParsedOption {
+            app_option: &OPT_VERSION,
+            arg_for_option: None,
+            name_type_used,
+        }];
+        self.operands.clear();
+    }
+}
+
+/// Differentiates the utilities included in DiffUtil
+/// and allows easy output of the name with format!("{diff_util}").
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[allow(dead_code)]
+pub enum DiffUtility {
+    Cmp,
+    Diff,
+    Diff3,
+    Patch,
+    SDiff,
+}
+
+impl DiffUtility {
+    pub fn to_os_string(self) -> OsString {
+        OsString::from(self.to_string())
+    }
+}
+
+impl TryFrom<&OsString> for DiffUtility {
+    type Error = DiffUtilityError;
+
+    fn try_from(util_name: &OsString) -> Result<Self, Self::Error> {
+        match util_name.to_str() {
+            Some("cmp") => Ok(DiffUtility::Cmp),
+            Some("diff") => Ok(DiffUtility::Diff),
+            // Some("diff3") => Ok(DiffUtility::Diff3),
+            // Some("patch") => Ok(DiffUtility::Patch),
+            // Some("sdiff") => Ok(DiffUtility::SDiff),
+            Some("diff3") => Err(DiffUtilityError::NotYetSupported("diff3".to_string())),
+            Some("patch") => Err(DiffUtilityError::NotYetSupported("patch".to_string())),
+            Some("sdiff") => Err(DiffUtilityError::NotYetSupported("sdiff".to_string())),
+            Some(name) => Err(DiffUtilityError::NameNotRecognized(name.to_string())),
+            None => Err(DiffUtilityError::Nothing),
         }
     }
+}
 
-    fn version(&self) -> ArgParser {
-        ArgParser {
-            executable: self.executable.clone(),
-            options_parsed: vec![ParsedOption {
-                app_option: &OPT_VERSION,
-                arg_for_option: None,
-                name_type_used: OptionNameTypeUsed::ShortName,
-            }],
-            ..Default::default()
+impl Display for DiffUtility {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = match self {
+            DiffUtility::Cmp => "cmp",
+            DiffUtility::Diff => "diff",
+            DiffUtility::Diff3 => "diff3",
+            DiffUtility::SDiff => "sdiff",
+            DiffUtility::Patch => "patch",
+        };
+        write!(f, "{name}")
+    }
+}
+
+#[derive(Debug)]
+pub enum DiffUtilityError {
+    NameNotRecognized(String),
+    NotYetSupported(String),
+    Nothing,
+}
+
+impl Display for DiffUtilityError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DiffUtilityError::NameNotRecognized(name) => {
+                write!(f, "{name}: utility name not recognized")
+            }
+            DiffUtilityError::NotYetSupported(name) => {
+                write!(f, "{name}: utility not yet supported")
+            }
+            DiffUtilityError::Nothing => {
+                write!(f, "Expected utility name as second argument, got nothing.")
+            }
         }
     }
 }

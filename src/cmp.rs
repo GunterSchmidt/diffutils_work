@@ -51,7 +51,7 @@ fn prepare_reader(
             Ok(file) => Box::new(BufReader::new(file)),
             Err(e) => {
                 return Err(format_failure_to_read_input_file(
-                    &params.executable,
+                    &params.util.to_os_string(),
                     path,
                     &e,
                 ));
@@ -62,7 +62,7 @@ fn prepare_reader(
     if let Some(skip) = skip {
         if let Err(e) = io::copy(&mut reader.by_ref().take(*skip), &mut io::sink()) {
             return Err(format_failure_to_read_input_file(
-                &params.executable,
+                &params.util.to_os_string(),
                 path,
                 &e,
             ));
@@ -119,7 +119,7 @@ pub fn cmp(params: &ParamsCmp) -> Result<Cmp, String> {
             Ok(buf) => buf,
             Err(e) => {
                 return Err(format_failure_to_read_input_file(
-                    &params.executable,
+                    &params.util.to_os_string(),
                     &params.file_1,
                     &e,
                 ));
@@ -130,7 +130,7 @@ pub fn cmp(params: &ParamsCmp) -> Result<Cmp, String> {
             Ok(buf) => buf,
             Err(e) => {
                 return Err(format_failure_to_read_input_file(
-                    &params.executable,
+                    &params.util.to_os_string(),
                     &params.file_2,
                     &e,
                 ));
@@ -196,12 +196,9 @@ pub fn cmp(params: &ParamsCmp) -> Result<Cmp, String> {
                         &mut output,
                         params,
                     )?;
-                    stdout.write_all(output.as_slice()).map_err(|e| {
-                        format!(
-                            "{}: error printing output: {e}",
-                            params.executable.to_string_lossy()
-                        )
-                    })?;
+                    stdout
+                        .write_all(output.as_slice())
+                        .map_err(|e| format!("{}: error printing output: {e}", params.util))?;
                     output.clear();
                 } else {
                     report_difference(from_byte, to_byte, at_byte, at_line, params);
@@ -241,6 +238,7 @@ pub fn cmp(params: &ParamsCmp) -> Result<Cmp, String> {
 //     An exit status of 0 means no differences were found,
 //     1 means some differences were found,
 //     and 2 means trouble.
+// TODO first param util: DiffUtility,
 pub fn main(options: Peekable<ArgsOs>) -> ExitCode {
     // let params = match Params::parse_params(options) {
     //     Ok(res) => match res {
@@ -448,22 +446,18 @@ fn report_eof(at_byte: Bytes, at_line: u64, start_of_line: bool, eof_on: &str, p
     }
 
     if at_byte == 1 {
-        eprintln!(
-            "{}: EOF on '{}' which is empty",
-            params.executable.to_string_lossy(),
-            eof_on
-        );
+        eprintln!("{}: EOF on '{}' which is empty", params.util, eof_on);
     } else if params.verbose {
         eprintln!(
             "{}: EOF on '{}' after byte {}",
-            params.executable.to_string_lossy(),
+            params.util,
             eof_on,
             at_byte - 1,
         );
     } else if start_of_line {
         eprintln!(
             "{}: EOF on '{}' after byte {}, line {}",
-            params.executable.to_string_lossy(),
+            params.util,
             eof_on,
             at_byte - 1,
             at_line - 1
@@ -471,7 +465,7 @@ fn report_eof(at_byte: Bytes, at_line: u64, start_of_line: bool, eof_on: &str, p
     } else {
         eprintln!(
             "{}: EOF on '{}' after byte {}, in line {}",
-            params.executable.to_string_lossy(),
+            params.util,
             eof_on,
             at_byte - 1,
             at_line
