@@ -4,8 +4,8 @@
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use diffutilslib::{
-    cmp::params_cmp::{ParamsCmp, ParamsCmpParseOk},
-    params_gen::ParamsGen,
+    arg_parser::ArgParser,
+    cmp::params_cmp::{ParamsCmp, ParamsCmpOk},
 };
 use std::{ffi::OsString, time::Duration};
 
@@ -24,7 +24,7 @@ fn bench_parser(c: &mut Criterion) {
     group.sample_size(10);
 
     group.bench_function("Parse bytes Exabyte", |b| {
-        b.iter(|| ParamsGen::parse_bytes("1EIB"))
+        b.iter(|| ArgParser::parse_bytes("1EIB"))
     });
 
     // group.bench_function("Parse short option", |b| {
@@ -53,12 +53,12 @@ fn parse_single_arg(cmd: &str) -> String {
     let args = str_to_options(cmd).into_iter().peekable();
     let params = match ParamsCmp::parse_params(args) {
         Ok(res) => match res {
-            ParamsCmpParseOk::Info(info) => {
+            ParamsCmpOk::Info(info) => {
                 // println!("{info}");
                 // return ExitCode::from(0);
                 return info.to_string();
             }
-            ParamsCmpParseOk::ParamsCmp(params) => params,
+            ParamsCmpOk::ParamsCmp(params) => params,
         },
         Err(e) => {
             // eprintln!("{e}");

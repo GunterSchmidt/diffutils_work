@@ -1,14 +1,14 @@
 use std::{ffi::OsString, fmt::Display, iter::Peekable};
 
 use crate::{
-    cmp::{Bytes, IgnInit, EXE_NAME},
-    params_gen::{
-        AppOption, OptionNameTypeUsed, ParamsGen, ParamsGenParseError, ParseBytesError,
-        ParsedOption, TEXT_HELP, TEXT_HELP_HINT, TEXT_VERSION,
+    arg_parser::{
+        AppOption, ArgParser, ArgParserError, OptionNameTypeUsed, ParseBytesError, ParsedOption,
+        OPT_HELP, OPT_VERSION, TEXT_COPYRIGHT,
     },
+    cmp::{Bytes, IgnInit, EXE_NAME},
 };
 
-pub type ResultParamsCmpParse = Result<ParamsCmpParseOk, ParamsCmpParseError>;
+pub type ResultParamsCmpParse = Result<ParamsCmpOk, ParamsCmpError>;
 
 // -b, --print-bytes          print differing bytes
 // -i, --ignore-initial=SKIP         skip first SKIP bytes of both inputs
@@ -24,12 +24,6 @@ const OPT_BYTES_LIMIT: AppOption = AppOption {
     short: Some('n'),
     has_arg: true,
     arg_default: Some("10"),
-};
-const OPT_HELP: AppOption = AppOption {
-    long_name: "help",
-    short: None,
-    has_arg: false,
-    arg_default: None,
 };
 const OPT_IGNORE_INITIAL: AppOption = AppOption {
     long_name: "ignore-initial",
@@ -61,22 +55,53 @@ const OPT_VERBOSE: AppOption = AppOption {
     has_arg: false,
     arg_default: None,
 };
-const OPT_VERSION: AppOption = AppOption {
-    long_name: "version",
-    short: Some('v'),
-    has_arg: false,
-    arg_default: None,
-};
+// must contain OPT_HELP,and OPT_VERSION
+
 const ARG_OPTIONS: [AppOption; 8] = [
     OPT_BYTES_LIMIT,
-    OPT_HELP,
     OPT_IGNORE_INITIAL,
     OPT_PRINT_BYTES,
     OPT_QUIET,
     OPT_SILENT,
     OPT_VERBOSE,
+    OPT_HELP,
     OPT_VERSION,
 ];
+
+// TODO Help text
+pub const TEXT_HELP: &str = r#"
+        Usage: {} [OPTION]... FILE1 [FILE2 [SKIP1 [SKIP2]]]
+        Compare two files byte by byte.
+
+        The optional SKIP1 and SKIP2 specify the number of bytes to skip
+        at the beginning of each file (zero by default).
+
+        Mandatory arguments to long options are mandatory for short options too.
+          -b, --print-bytes          print differing bytes
+          -i, --ignore-initial=SKIP         skip first SKIP bytes of both inputs
+          -i, --ignore-initial=SKIP1:SKIP2  skip first SKIP1 bytes of FILE1 and
+                                              first SKIP2 bytes of FILE2
+          -l, --verbose              output byte numbers and differing byte values
+          -n, --bytes=LIMIT          compare at most LIMIT bytes
+          -s, --quiet, --silent      suppress all normal output
+              --help                 display this help and exit
+          -v, --version              output version information and exit
+
+        SKIP values may be followed by the following multiplicative suffixes:
+        kB 1000, K 1024, MB 1,000,000, M 1,048,576,
+        GB 1,000,000,000, G 1,073,741,824, and so on for T, P, E, Z, Y.
+
+        If a FILE is '-' or missing, read standard input.
+        Exit status is 0 if inputs are the same, 1 if different, 2 if trouble.
+
+        This utility is part of the uutils project: https://github.com/uutils/
+        Report bugs here: https://github.com/uutils/diffutils/issues
+    "},
+        params.executable.to_string_lossy()
+    );"#;
+
+// TODO Version text
+pub const TEXT_VERSION: &str = concat!("cmp (Rust DiffUtils) ", env!("CARGO_PKG_VERSION"),);
 
 #[derive(Debug)]
 pub enum ParamCmpOption {
@@ -124,8 +149,8 @@ impl From<&ParsedOption> for ParamCmpOption {
 /// -- help und --version will return an Info message, \
 /// Error will be returned as [ParamsCmpParseError] in the function Result.
 #[derive(Debug, PartialEq)]
-pub enum ParamsCmpParseOk {
-    Info(ParamsCmpParseInfo),
+pub enum ParamsCmpOk {
+    Info(ParamsCmpInfo),
     ParamsCmp(ParamsCmp),
 }
 
@@ -134,16 +159,16 @@ pub enum ParamsCmpParseOk {
 /// The parser returns these enums to the caller, allowing the caller can identify this as information,
 /// so that the program exit code is SUCCESS(0).
 #[derive(Debug, PartialEq)]
-pub enum ParamsCmpParseInfo {
+pub enum ParamsCmpInfo {
     Help,
     Version,
 }
 
-impl Display for ParamsCmpParseInfo {
+impl Display for ParamsCmpInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let info = match self {
-            ParamsCmpParseInfo::Help => TEXT_HELP,
-            ParamsCmpParseInfo::Version => TEXT_VERSION,
+            ParamsCmpInfo::Help => TEXT_HELP,
+            ParamsCmpInfo::Version => &format!("{TEXT_VERSION}\n{TEXT_COPYRIGHT}"),
         };
 
         write!(f, "{}", info)
@@ -152,9 +177,9 @@ impl Display for ParamsCmpParseInfo {
 
 /// Contains all parser errors and their text messages.
 #[derive(Debug, PartialEq)]
-pub enum ParamsCmpParseError {
+pub enum ParamsCmpError {
     /// Bubbled up error
-    ParseGenError(ParamsGenParseError),
+    ArgParserError(ArgParserError),
 
     /// bytes number incorrect
     BytesInvalidNumber(ParsedOption),
@@ -177,7 +202,7 @@ pub enum ParamsCmpParseError {
     SilentVerboseIncompatible,
 }
 
-impl ParamsCmpParseError {
+impl ParamsCmpError {
     pub fn from_parse_byte_error(
         parse_byte_error: ParseBytesError,
         parsed_option: &ParsedOption,
@@ -185,9 +210,9 @@ impl ParamsCmpParseError {
         // name_type_used: OptionNameTypeUsed,
     ) -> Self {
         match parse_byte_error {
-            ParseBytesError::NoValue => Self::ParseGenError(
-                ParamsGenParseError::ArgForOptionMissing(parsed_option.clone()),
-            ),
+            ParseBytesError::NoValue => {
+                Self::ArgParserError(ArgParserError::ArgForOptionMissing(parsed_option.clone()))
+            }
             ParseBytesError::PosOverflow => {
                 Self::BytesPosOverflow(parsed_option.clone())
                 // Self::ParseGenError(ParamsGenParseError::ArgForOptionMissing(
@@ -201,46 +226,36 @@ impl ParamsCmpParseError {
     }
 }
 
-// impl From<ParamsGenParseError> for ParamsCmpParseError {
-//     fn from(err: ParamsGenParseError) -> Self {
-//         match err {
-//             ParamsGenParseError::AmbiguousOption(a, b) => Self::AmbiguousOption(a, b),
-//             ParamsGenParseError::ArgForOptionNotAllowed(opt, param) => {
-//                 Self::ArgForOptionNotAllowed(opt, param)
-//             }
-//             ParamsGenParseError::ArgForOptionMissing(app_option, name) => match app_option {
-//                 OPT_BYTES_LIMIT => Self::ArgForOptionMissing(),
-//             },
-//             ParamsGenParseError::NoExecutable => Self::NoExecutable,
-//             ParamsGenParseError::InvalidOption(opt) => Self::InvalidOption(opt),
-//             ParamsGenParseError::UnrecognizedOption(opt) => Self::UnrecognizedOption(opt),
-//         }
-//     }
-// }
+impl From<ArgParserError> for ParamsCmpError {
+    fn from(err: ArgParserError) -> Self {
+        Self::ArgParserError(err)
+    }
+}
 
-impl Display for ParamsCmpParseError {
+impl Display for ParamsCmpError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Writes the error message, adds cmp: and the --help information.
         fn write_err(f: &mut std::fmt::Formatter<'_>, msg: &str) -> Result<(), std::fmt::Error> {
-            write!(f, "{EXE_NAME}: {msg}\n{EXE_NAME}: {TEXT_HELP_HINT}")
+            ArgParserError::write_err(f, EXE_NAME, msg)
         }
 
         // TODO Short and Long name errors
         match self {
-            ParamsCmpParseError::ParseGenError(param) => write!(f, "{param}"),
+            ParamsCmpError::ArgParserError(e) => write_err(f, &e.to_string()),
 
-            ParamsCmpParseError::BytesInvalidNumber(opt)
-            | ParamsCmpParseError::BytesInvalidUnit(opt) => write_err(
-                f,
-                &format!(
-                    "invalid '--{}' value '{}'",
-                    opt.app_option.long_name,
-                    opt.arg_for_option
-                        .as_ref()
-                        .expect("Logic error, number must be given.")
-                ),
-            ),
-            ParamsCmpParseError::BytesPosOverflow(opt) => write_err(
+            ParamsCmpError::BytesInvalidNumber(opt) | ParamsCmpError::BytesInvalidUnit(opt) => {
+                write_err(
+                    f,
+                    &format!(
+                        "invalid '--{}' value '{}'",
+                        opt.app_option.long_name,
+                        opt.arg_for_option
+                            .as_ref()
+                            .expect("Logic error, number must be given.")
+                    ),
+                )
+            }
+            ParamsCmpError::BytesPosOverflow(opt) => write_err(
                 f,
                 &format!(
                     "invalid '--{}' value (too large) '{}'",
@@ -250,14 +265,12 @@ impl Display for ParamsCmpParseError {
                         .expect("Logic error, number must be given.")
                 ),
             ),
-            ParamsCmpParseError::ExtraOperand(opt) => {
-                write_err(f, &format!("extra operand '{opt}'"))
-            }
-            ParamsCmpParseError::SilentPrintBytesIncompatible => write_err(
+            ParamsCmpError::ExtraOperand(opt) => write_err(f, &format!("extra operand '{opt}'")),
+            ParamsCmpError::SilentPrintBytesIncompatible => write_err(
                 f,
                 "options '--print-bytes' ('-b') and '--silent' ('-s') are incompatible",
             ),
-            ParamsCmpParseError::SilentVerboseIncompatible => write_err(
+            ParamsCmpError::SilentVerboseIncompatible => write_err(
                 f,
                 "options '--verbose' ('-l') and '--silent' ('-s') are incompatible",
             ),
@@ -287,18 +300,11 @@ pub struct ParamsCmp {
 
 impl ParamsCmp {
     pub fn parse_params<I: Iterator<Item = OsString>>(opts: Peekable<I>) -> ResultParamsCmpParse {
-        match ParamsGen::parse_params(&ARG_OPTIONS, opts) {
-            Ok(p_gen) => {
-                // dbg!(&p_gen);
-                Self::try_from(&p_gen)
-                // set params
-                // Ok(ParamsParseCmpOk::ParamsCmp(p_gen))
-            }
-            Err(e) => Err(ParamsCmpParseError::ParseGenError(e)),
-        }
+        let p_gen = ArgParser::parse_params(&ARG_OPTIONS, opts)?;
+        Self::try_from(&p_gen)
     }
 
-    fn try_from(p_gen: &ParamsGen) -> ResultParamsCmpParse {
+    fn try_from(p_gen: &ArgParser) -> ResultParamsCmpParse {
         let mut params = Self {
             executable: p_gen.executable.clone(),
             ..Default::default()
@@ -317,7 +323,7 @@ impl ParamsCmp {
                     // }
                 }
                 ParamCmpOption::Help => {
-                    return Ok(ParamsCmpParseOk::Info(ParamsCmpParseInfo::Help));
+                    return Ok(ParamsCmpOk::Info(ParamsCmpInfo::Help));
                 }
                 ParamCmpOption::IgnoreInitial(_skip1_2) => {
                     params.set_skip_bytes_files(parsed_option)?;
@@ -325,18 +331,16 @@ impl ParamsCmp {
                 ParamCmpOption::PrintBytes => params.set_print_bytes()?,
                 ParamCmpOption::Silent => params.set_silent()?,
                 ParamCmpOption::Verbose => params.set_verbose()?,
-                ParamCmpOption::Version => {
-                    return Ok(ParamsCmpParseOk::Info(ParamsCmpParseInfo::Version))
-                }
+                ParamCmpOption::Version => return Ok(ParamsCmpOk::Info(ParamsCmpInfo::Version)),
             }
         }
 
         // set operands
         match p_gen.operands.len() {
             0 => {
-                return Err(ParamsCmpParseError::ParseGenError(
-                    ParamsGenParseError::NoOperand,
-                ))
+                return Err(ParamsCmpError::ArgParserError(ArgParserError::NoOperand(
+                    params.executable.to_string_lossy().to_string(),
+                )))
             }
             // If only file_1 is set, then file_2 defaults to '-', so it reads from StandardInput.
             1 => {
@@ -370,7 +374,7 @@ impl ParamsCmp {
                 }
             }
             _ => {
-                return Err(ParamsCmpParseError::ExtraOperand(
+                return Err(ParamsCmpError::ExtraOperand(
                     p_gen.operands[4].to_string_lossy().to_string(),
                 ));
             }
@@ -386,7 +390,7 @@ impl ParamsCmp {
         }
 
         // dbg!(&params);
-        Ok(ParamsCmpParseOk::ParamsCmp(params))
+        Ok(ParamsCmpOk::ParamsCmp(params))
     }
 
     /// Sets the --bytes limit and returns the input as number.
@@ -395,13 +399,13 @@ impl ParamsCmp {
     pub fn set_bytes_limit(
         &mut self,
         parsed_option: &ParsedOption,
-    ) -> Result<Bytes, ParamsCmpParseError> {
-        match ParamsGen::parse_bytes(parsed_option.arg_for_option.as_ref().expect("Logic error")) {
+    ) -> Result<Bytes, ParamsCmpError> {
+        match ArgParser::parse_bytes(parsed_option.arg_for_option.as_ref().expect("Logic error")) {
             Ok(r) => {
                 self.bytes_limit = Some(r);
                 Ok(r)
             }
-            Err(e) => Err(ParamsCmpParseError::from_parse_byte_error(e, parsed_option)),
+            Err(e) => Err(ParamsCmpError::from_parse_byte_error(e, parsed_option)),
             // match e {
             //     ParseBytesError::NoValue => Err(ParamsCmpParseError::ParseGenError(
             //         ParamsGenParseError::ArgForOptionMissing(parsed_option.clone()),
@@ -426,7 +430,7 @@ impl ParamsCmp {
     fn set_skip_bytes_files(
         &mut self,
         parsed_option: &ParsedOption,
-    ) -> Result<bool, ParamsCmpParseError> {
+    ) -> Result<bool, ParamsCmpError> {
         // if bytes.is_empty() {
         //     return Err(ParamsCmpParseError::ArgForOptionMissing(
         //         BytesType::IgnoreInitial,
@@ -468,7 +472,7 @@ impl ParamsCmp {
     pub fn set_skip_bytes_file_1(
         &mut self,
         parsed_option: &ParsedOption,
-    ) -> Result<IgnInit, ParamsCmpParseError> {
+    ) -> Result<IgnInit, ParamsCmpError> {
         self.set_skip_bytes_file_no(parsed_option, 1)
     }
 
@@ -478,7 +482,7 @@ impl ParamsCmp {
     pub fn set_skip_bytes_file_2(
         &mut self,
         parsed_option: &ParsedOption,
-    ) -> Result<IgnInit, ParamsCmpParseError> {
+    ) -> Result<IgnInit, ParamsCmpError> {
         self.set_skip_bytes_file_no(parsed_option, 2)
     }
 
@@ -492,8 +496,8 @@ impl ParamsCmp {
         &mut self,
         parsed_option: &ParsedOption,
         file_no: i32,
-    ) -> Result<IgnInit, ParamsCmpParseError> {
-        match ParamsGen::parse_bytes(
+    ) -> Result<IgnInit, ParamsCmpError> {
+        match ArgParser::parse_bytes(
             parsed_option
                 .arg_for_option
                 .as_ref()
@@ -503,7 +507,7 @@ impl ParamsCmp {
                 #[cfg(feature = "cmp_bytes_limit_128_bit")]
                 {
                     if r > IgnInit::MAX as u128 {
-                        return Err(ParamsCmpParseError::BytesPosOverflow(parsed_option.clone()));
+                        return Err(ParamsCmpError::BytesPosOverflow(parsed_option.clone()));
                     }
                     let r = r as IgnInit;
                     match file_no {
@@ -523,14 +527,14 @@ impl ParamsCmp {
                     Ok(r)
                 }
             }
-            Err(e) => Err(ParamsCmpParseError::from_parse_byte_error(e, parsed_option)),
+            Err(e) => Err(ParamsCmpError::from_parse_byte_error(e, parsed_option)),
         }
     }
 
-    pub fn set_print_bytes(&mut self) -> Result<(), ParamsCmpParseError> {
+    pub fn set_print_bytes(&mut self) -> Result<(), ParamsCmpError> {
         // Should actually raise an error if --silent is set, but GNU cmp does not do that.
         if self.silent {
-            Err(ParamsCmpParseError::SilentPrintBytesIncompatible)
+            Err(ParamsCmpError::SilentPrintBytesIncompatible)
         } else {
             self.print_bytes = true;
 
@@ -538,11 +542,11 @@ impl ParamsCmp {
         }
     }
 
-    pub fn set_silent(&mut self) -> Result<(), ParamsCmpParseError> {
+    pub fn set_silent(&mut self) -> Result<(), ParamsCmpError> {
         if self.verbose {
-            Err(ParamsCmpParseError::SilentVerboseIncompatible)
+            Err(ParamsCmpError::SilentVerboseIncompatible)
         } else if self.print_bytes {
-            Err(ParamsCmpParseError::SilentPrintBytesIncompatible)
+            Err(ParamsCmpError::SilentPrintBytesIncompatible)
         } else {
             self.silent = true;
 
@@ -550,9 +554,9 @@ impl ParamsCmp {
         }
     }
 
-    pub fn set_verbose(&mut self) -> Result<(), ParamsCmpParseError> {
+    pub fn set_verbose(&mut self) -> Result<(), ParamsCmpError> {
         if self.silent {
-            Err(ParamsCmpParseError::SilentVerboseIncompatible)
+            Err(ParamsCmpError::SilentVerboseIncompatible)
         } else {
             self.verbose = true;
 
@@ -564,7 +568,11 @@ impl ParamsCmp {
 // Usually assert is used like assert_eq(result, desired_result).
 #[cfg(test)]
 mod tests {
+    use crate::arg_parser::OPT_VERSION;
+
     use super::*;
+
+    pub const TEXT_HELP_HINT: &str = "Try 'cmp --help' for more information.";
 
     fn os(s: &str) -> OsString {
         OsString::from(s)
@@ -582,7 +590,7 @@ mod tests {
     }
 
     fn res_ok(params: ParamsCmp) -> ResultParamsCmpParse {
-        Ok(ParamsCmpParseOk::ParamsCmp(params))
+        Ok(ParamsCmpOk::ParamsCmp(params))
     }
 
     #[test]
@@ -678,7 +686,7 @@ mod tests {
             // Failure: --ignore-initial as operands with 1 2Y (which is greater than u64)
             assert_eq!(
                 parse("cmp foo bar 1 2Y"),
-                Err(ParamsCmpParseError::BytesInvalidUnit(ParsedOption {
+                Err(ParamsCmpError::BytesInvalidUnit(ParsedOption {
                     app_option: &OPT_IGNORE_INITIAL,
                     arg_for_option: Some("2Y".to_string()),
                     name_type_used: OptionNameTypeUsed::LongName
@@ -688,15 +696,15 @@ mod tests {
         // Err: too many operands
         assert_eq!(
             parse("cmp foo bar 1 2 3"),
-            Err(ParamsCmpParseError::ExtraOperand("3".to_string())),
+            Err(ParamsCmpError::ExtraOperand("3".to_string())),
         );
 
         // Err: no arguments
         assert_eq!(
             parse("cmp"),
-            Err(ParamsCmpParseError::ParseGenError(
-                ParamsGenParseError::NoOperand
-            ))
+            Err(ParamsCmpError::ArgParserError(ArgParserError::NoOperand(
+                "cmp".to_string()
+            )))
         );
     }
 
@@ -732,8 +740,8 @@ mod tests {
         // --ver ambiguous
         assert_eq!(
             parse("cmp --ver foo bar"),
-            Err(ParamsCmpParseError::ParseGenError(
-                ParamsGenParseError::AmbiguousOption(
+            Err(ParamsCmpError::ArgParserError(
+                ArgParserError::AmbiguousOption(
                     "--ver".to_string(),
                     vec![&OPT_VERBOSE, &OPT_VERSION] // "'--verbose' '--version'".to_string()
                 )
@@ -792,12 +800,12 @@ mod tests {
         // Some options do not mix.
         assert_eq!(
             parse("cmp -l -s foo bar"),
-            Err(ParamsCmpParseError::SilentVerboseIncompatible),
+            Err(ParamsCmpError::SilentVerboseIncompatible),
         );
         // This does not give an error in GNU cmp, but should.
         assert_eq!(
             parse("cmp -b -s foo bar"),
-            Err(ParamsCmpParseError::SilentPrintBytesIncompatible),
+            Err(ParamsCmpError::SilentPrintBytesIncompatible),
         );
     }
 
@@ -899,7 +907,7 @@ mod tests {
         {
             assert_eq!(
                 parse("cmp -n 1ZB foo bar"),
-                Err(ParamsCmpParseError::BytesInvalidUnit(ParsedOption::new(
+                Err(ParamsCmpError::BytesInvalidUnit(ParsedOption::new(
                     &OPT_BYTES_LIMIT,
                     "1ZB".to_string(),
                     OptionNameTypeUsed::ShortName
@@ -917,7 +925,7 @@ mod tests {
 
         assert_eq!(
             parse("cmp -n 99999999999999999999999999999999999999999999999999999999999 foo bar"),
-            Err(ParamsCmpParseError::BytesPosOverflow(ParsedOption::new(
+            Err(ParamsCmpError::BytesPosOverflow(ParsedOption::new(
                 &OPT_BYTES_LIMIT,
                 "99999999999999999999999999999999999999999999999999999999999".to_string(),
                 OptionNameTypeUsed::ShortName

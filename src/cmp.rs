@@ -7,7 +7,7 @@
 /// - ParamsGen document
 /// - ParamsGen EXE_NAME depending on app
 /// - arg default
-/// - branch u64/u128
+/// - PR 183, branch u64/u128
 /// - branch bench
 /// - branch tests
 ///   - $ cargo run -- cmp old.txt new.txt -n1 other result
@@ -20,7 +20,7 @@
 /// - Reusable components
 // pub mod params;
 pub mod params_cmp;
-use crate::cmp::params_cmp::{ParamsCmp, ParamsCmpParseOk};
+use crate::cmp::params_cmp::{ParamsCmp, ParamsCmpOk};
 use crate::utils::format_failure_to_read_input_file;
 use std::env::{self, ArgsOs};
 use std::ffi::OsString;
@@ -30,7 +30,7 @@ use std::process::ExitCode;
 use std::{cmp, fs, io};
 
 pub const EXE_NAME: &str = "cmp";
-/// for --bytes and --ignore_initial values
+/// for --bytes, so really large number limits can be expressed, like 1Y.
 #[cfg(not(feature = "cmp_bytes_limit_128_bit"))]
 pub type Bytes = u64;
 #[cfg(feature = "cmp_bytes_limit_128_bit")]
@@ -257,11 +257,11 @@ pub fn main(options: Peekable<ArgsOs>) -> ExitCode {
     // };
     let params = match ParamsCmp::parse_params(options) {
         Ok(res) => match res {
-            ParamsCmpParseOk::Info(info) => {
+            ParamsCmpOk::Info(info) => {
                 println!("{info}");
                 return ExitCode::from(0);
             }
-            ParamsCmpParseOk::ParamsCmp(params) => params,
+            ParamsCmpOk::ParamsCmp(params) => params,
         },
         Err(e) => {
             eprintln!("{e}");

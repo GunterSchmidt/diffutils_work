@@ -11,6 +11,7 @@ use std::{
     process::ExitCode,
 };
 
+mod arg_parser;
 mod cmp;
 mod context_diff;
 mod diff;
@@ -18,7 +19,6 @@ mod ed_diff;
 mod macros;
 mod normal_diff;
 mod params;
-mod params_gen;
 mod side_diff;
 mod unified_diff;
 mod utils;

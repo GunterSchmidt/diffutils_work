@@ -10,6 +10,7 @@ use std::path::Path;
 // mod test;
 
 const SORT_ALPHABETICALLY: bool = false;
+const SKIP_HELP_VERSION: bool = true;
 
 /// This contains the args/options the app allows. They must be all of const value.
 #[derive(Debug, Default)]
@@ -106,6 +107,7 @@ fn parse_to_app_options(lines: &[String]) -> String {
                         }
                         None => long,
                     };
+
                     opt.option = option_name(&opt.long_name);
                     println!("   Option: {opt}");
                     opts.push(opt);
@@ -120,8 +122,15 @@ fn parse_to_app_options(lines: &[String]) -> String {
         opts.sort_by_key(|k| k.option.clone());
     }
 
+    // create the consts
     let mut content = String::new();
     for opt in opts.iter() {
+        if SKIP_HELP_VERSION {
+            match opt.long_name.as_str() {
+                "help" | "version" => continue,
+                _ => {}
+            }
+        }
         println!("{opt}");
         content.push_str(&opt.to_string());
         content.push('\n');
