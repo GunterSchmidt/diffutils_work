@@ -467,26 +467,18 @@ impl ArgParser {
 
     #[allow(unused)]
     pub fn is_help(&self) -> bool {
-        match self
-            .options_parsed
+        self.options_parsed
             .iter()
             .find(|opt| *opt.app_option == OPT_HELP)
-        {
-            Some(_) => true,
-            None => false,
-        }
+            .is_some()
     }
 
     #[allow(unused)]
     pub fn is_version(&self) -> bool {
-        match self
-            .options_parsed
+        self.options_parsed
             .iter()
             .find(|opt| *opt.app_option == OPT_VERSION)
-        {
-            Some(_) => true,
-            None => false,
-        }
+            .is_some()
     }
 
     /// Parses a number as defined in <https://www.gnu.org/software/diffutils/manual/html_node/cmp-Options.html>. \
