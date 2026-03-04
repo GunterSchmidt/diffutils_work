@@ -43,7 +43,6 @@ fn prepare_reader(
     skip: &Option<IgnInit>,
     params: &ParamsCmp,
 ) -> Result<Box<dyn BufRead>, String> {
-    dbg!(path);
     let mut reader: Box<dyn BufRead> = if path == "-" {
         Box::new(BufReader::new(io::stdin()))
     } else {
@@ -80,6 +79,7 @@ pub enum Cmp {
 
 /// This is the main function to compare the files. \
 /// Files are limited to u64 bytes and u64 lines.
+// TODO CmpError
 pub fn cmp(params: &ParamsCmp) -> Result<Cmp, String> {
     let mut from = prepare_reader(&params.file_1, &params.ignore_initial_bytes_file_1, params)?;
     let mut to = prepare_reader(&params.file_2, &params.ignore_initial_bytes_file_2, params)?;
@@ -239,7 +239,7 @@ pub fn cmp(params: &ParamsCmp) -> Result<Cmp, String> {
 //     1 means some differences were found,
 //     and 2 means trouble.
 // TODO first param util: DiffUtility,
-pub fn main(options: Peekable<ArgsOs>) -> ExitCode {
+pub fn main(opts: Peekable<ArgsOs>) -> ExitCode {
     // let params = match Params::parse_params(options) {
     //     Ok(res) => match res {
     //         ParamsParseOk::Info(info) => {
@@ -253,7 +253,7 @@ pub fn main(options: Peekable<ArgsOs>) -> ExitCode {
     //         return ExitCode::from(2);
     //     }
     // };
-    let params = match ParamsCmp::parse_params(options) {
+    let params = match ParamsCmp::parse_params(opts) {
         Ok(res) => match res {
             ParamsCmpOk::Info(info) => {
                 println!("{info}");

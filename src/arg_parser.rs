@@ -1,7 +1,8 @@
-/// This is a generic parser for params/options.
-///
-/// The concept is to have this generic parser, which will parse e.g. 'cmp --options' or 'diff --options'. \
-/// For the parser to know which options are possible, they must be given as a list of AppOptions.
+//! This is a generic parser for params/options.
+//!
+//! The concept is to have this generic parser, which will parse e.g. 'cmp --options' or 'diff --options'. \
+//! For the parser to know which options are possible, they must be given as a list of AppOptions.
+//! The AppOptions are known at compile time so 'static is used for all these.
 use std::{ffi::OsString, fmt::Display, iter::Peekable};
 
 use crate::cmp::Bytes;
@@ -12,9 +13,13 @@ type ResultBytesParse = Result<Bytes, ParseBytesError>;
 pub const TEXT_COPYRIGHT: &str = r#"Copyright (C) 2026 <TODO>?
 Licenses: MIT License, Apache License 2.0 <https://www.apache.org/licenses/LICENSE-2.0>.
 This is free software: you are free to change and redistribute it.
-There is NO WARRANTY, to the extent permitted by law.
+There is NO WARRANTY, to the extent permitted by law."#;
 
-Written by <TODO>."#;
+// TODO finalize text
+pub const TEXT_HELP_FOOTER: &str = r#"
+This utility is part of the Rust uutils project: https://github.com/uutils/.
+Report bugs here: https://github.com/uutils/diffutils/issues.
+"#;
 
 pub const OPT_HELP: AppOption = AppOption {
     long_name: "help",
@@ -92,9 +97,13 @@ impl ParsedOption {
         // argument missing
         if self.app_option.has_arg {
             if self.arg_for_option.is_none() {
-                // take following argument
-                if let Some(arg) = opts.next() {
-                    self.arg_for_option = Some(arg.to_string_lossy().to_string())
+                // take following argument if it is not an option
+                if let Some(arg) = opts.peek() {
+                    let arg = arg.to_string_lossy();
+                    if !arg.starts_with('-') {
+                        self.arg_for_option = Some(arg.to_string());
+                        _ = opts.next();
+                    }
                 }
                 if self.arg_for_option.is_none() {
                     if let Some(default) = self.app_option.arg_default {
@@ -112,6 +121,20 @@ impl ParsedOption {
         }
 
         Ok(())
+    }
+
+    pub fn arg_for_option_or_empty_string(&self) -> String {
+        match &self.arg_for_option {
+            Some(s) => s.clone(),
+            None => String::new(),
+        }
+    }
+
+    pub fn short_char_or_empty_string(&self) -> String {
+        match self.app_option.short {
+            Some(c) => format!(" ('-{c}')"),
+            None => String::new(),
+        }
     }
 }
 
@@ -138,10 +161,6 @@ pub enum OptionNameTypeUsed {
     LongName,
     ShortName,
 }
-
-// trait ParamsParseError {
-//     fn write_err(f: &mut std::fmt::Formatter<'_>, msg: &str) -> Result<(), std::fmt::Error>;
-// }
 
 /// Contains all parser errors and their text messages.
 ///
@@ -190,12 +209,6 @@ impl ArgParserError {
     }
 }
 
-// impl From<DiffUtilityError> for ArgParserError {
-//     fn from(e: DiffUtilityError) -> Self {
-//         Self::NoExecutable
-//     }
-// }
-
 impl Display for ArgParserError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self {
@@ -224,28 +237,23 @@ impl Display for ArgParserError {
                 ),
             ),
             ArgParserError::ArgForOptionMissing(opt) => {
-                // TODO differentiate long and short name
                 write!(
                     f,
                     "{}",
-                    &format!("option {} requires an argument", opt.app_option.long_name),
+                    &format!(
+                        "option '--{}'{} requires an argument",
+                        opt.app_option.long_name,
+                        opt.short_char_or_empty_string()
+                    ),
                 )
             }
-            // ParamsGenParseError::BytesInvalidNumber(t, n) => {
-            //     write_err(f, &format!("invalid {t} value '{n}'"))
-            // }
-            // ParamsGenParseError::BytesInvalidUnit(t, unit) => {
-            //     write_err(f, &format!("invalid {t} value '{unit}'"))
-            // }
-            // ParamsGenParseError::BytesPosOverflow(t, bytes) => {
-            //     write_err(f, &format!("invalid {t} value (too large) '{bytes}'"))
-            // }
             ArgParserError::NoExecutable => {
                 write!(f, "Expected utility name as second argument, got nothing.")
             }
-            // ParamsGenParseError::ExtraOperand(opt) => {
-            //     write_err(f, &format!("extra operand '{opt}'"))
-            // }
+            // TODO double dash
+            // sdiff options begin with ‘-’, so normally from-file and to-file may not begin with ‘-’.
+            // However, -- as an argument by itself treats the remaining arguments as file names even if they begin with ‘-’.
+            // You may not use - as an input file.
             // ParamsGenParseError::IgnoreInitialDouble( op3, ig) => {
             //     write_err(f,  &format!("option '--ignore-initial' ('-i') is set to {ig} but also values ares passed as operand '{op3}'"))
             // }
@@ -262,6 +270,7 @@ impl Display for ArgParserError {
     }
 }
 
+#[allow(unused)] // required for cmp
 pub enum ParseBytesError {
     NoValue,
     PosOverflow,
@@ -283,7 +292,7 @@ impl ArgParser {
         app_options: &'static [AppOption],
         mut args: Peekable<I>,
     ) -> ResultParamsGenParse {
-        // TODO This cannot happen here, it is an error of the main before calling this module.
+        // This cannot happen here, it is an error of the main before calling this module.
         let Some(name_executable) = args.next() else {
             return Err(ArgParserError::NoExecutable);
         };
@@ -297,6 +306,8 @@ impl ArgParser {
             options_parsed: Vec::new(),
             operands: Vec::new(),
         };
+        // read next param as file name, here we generally use read as operand
+        let mut is_double_dash = false;
 
         while let Some(param_os) = args.next() {
             let mut param = param_os.to_string_lossy().to_string();
@@ -304,7 +315,7 @@ impl ArgParser {
             let mut ci = param.char_indices().peekable();
             // is param?
             let (_, c0) = ci.next().expect("Param must have at least one char!");
-            if c0 == '-' {
+            if c0 == '-' && !is_double_dash {
                 // check 2nd char
                 match ci.next() {
                     Some((_, c1)) => {
@@ -451,7 +462,13 @@ impl ArgParser {
                                         p_opt.check_add_arg(&mut args)?;
                                         arg_parser.options_parsed.push(p_opt);
                                     }
-                                    None => return Err(ArgParserError::InvalidOption(param)),
+                                    None => {
+                                        if c1 == '-' {
+                                            is_double_dash = true
+                                        } else {
+                                            return Err(ArgParserError::InvalidOption(param));
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -507,7 +524,7 @@ impl ArgParser {
 
     /// Parses a number as defined in <https://www.gnu.org/software/diffutils/manual/html_node/cmp-Options.html>. \
     /// e.g. 1024 or 1KiB
-    // TODO Can this be used for other utils?
+    #[allow(unused)] // required for cmp
     pub fn parse_bytes(bytes: &str) -> ResultBytesParse {
         if bytes.is_empty() {
             return Err(ParseBytesError::NoValue);
@@ -551,8 +568,8 @@ impl ArgParser {
     /// Returns a multiplier depending on the given unit, e.g. 'KiB' -> 1024,
     /// which then can be used to calculate the final number of bytes.
     /// Following GNU documentation: https://www.gnu.org/software/diffutils/manual/html_node/cmp-Options.html
-    // TODO clean up, but works
-    #[cfg(not(feature = "cmp_allow_case_insensitive_byte_units"))]
+    #[cfg(not(feature = "allow_case_insensitive_byte_units"))]
+    #[allow(unused)] // required for cmp
     pub fn parse_number_unit(unit: &str) -> ResultBytesParse {
         // Note that GNU cmp advertises supporting up to Y, but fails if you try
         // to actually use anything beyond E.
@@ -571,12 +588,6 @@ impl ArgParser {
             "EB" => 1_000_000_000_000_000_000,
             "E" | "EiB" => 1_152_921_504_606_846_976,
 
-            // #[cfg(not(feature = "cmp_bytes_limit_128_bit"))]
-            // // Everything above EiB cannot fit into u64.
-            // // GNU cmp just returns an invalid bytes value
-            // "Z" | "ZB" | "ZiB" | "Y" | "YB" | "YiB" => {
-            //     return Err(ParseBytesError::InvalidUnit);
-            // }
             // Everything above EiB cannot fit into u64.
             // GNU cmp just returns an invalid bytes value
             #[cfg(feature = "cmp_bytes_limit_128_bit")]
@@ -598,7 +609,7 @@ impl ArgParser {
     /// Returns a multiplier depending on the given unit, e.g. 'KiB' -> 1024,
     /// which then can be used to calculate the final number of bytes.
     /// Following GNU documentation: https://www.gnu.org/software/diffutils/manual/html_node/cmp-Options.html
-    #[cfg(feature = "cmp_allow_case_insensitive_byte_units")]
+    #[cfg(feature = "allow_case_insensitive_byte_units")]
     pub fn parse_number_unit(unit: &str) -> ResultBytesParse {
         // Note that GNU cmp advertises supporting up to Y, but fails if you try
         // to actually use anything beyond E.
@@ -619,12 +630,6 @@ impl ArgParser {
             "eb" => 1_000_000_000_000_000_000,
             "e" | "eib" => 1_152_921_504_606_846_976,
 
-            // #[cfg(not(feature = "cmp_bytes_limit_128_bit"))]
-            // // Everything above EiB cannot fit into u64.
-            // // GNU cmp just returns an invalid bytes value
-            // "z" | "zb" | "zib" | "y" | "yb" | "yib" => {
-            //     return Err(ParseBytesError::InvalidUnit);
-            // }
             // Everything above EiB cannot fit into u64.
             // GNU cmp just returns an invalid bytes value
             #[cfg(feature = "cmp_bytes_limit_128_bit")]
@@ -655,10 +660,11 @@ impl ArgParser {
 
 /// Differentiates the utilities included in DiffUtil
 /// and allows easy output of the name with format!("{diff_util}").
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq)]
 #[allow(dead_code)]
 pub enum DiffUtility {
     Cmp,
+    #[default]
     Diff,
     Diff3,
     Patch,
@@ -666,6 +672,7 @@ pub enum DiffUtility {
 }
 
 impl DiffUtility {
+    #[allow(unused)]
     pub fn to_os_string(self) -> OsString {
         OsString::from(self.to_string())
     }
@@ -680,10 +687,10 @@ impl TryFrom<&OsString> for DiffUtility {
             Some("diff") => Ok(DiffUtility::Diff),
             // Some("diff3") => Ok(DiffUtility::Diff3),
             // Some("patch") => Ok(DiffUtility::Patch),
-            // Some("sdiff") => Ok(DiffUtility::SDiff),
+            Some("sdiff") => Ok(DiffUtility::SDiff),
             Some("diff3") => Err(DiffUtilityError::NotYetSupported("diff3".to_string())),
             Some("patch") => Err(DiffUtilityError::NotYetSupported("patch".to_string())),
-            Some("sdiff") => Err(DiffUtilityError::NotYetSupported("sdiff".to_string())),
+            // Some("sdiff") => Err(DiffUtilityError::NotYetSupported("sdiff".to_string())),
             Some(name) => Err(DiffUtilityError::NameNotRecognized(name.to_string())),
             None => Err(DiffUtilityError::Nothing),
         }

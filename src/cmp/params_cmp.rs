@@ -103,17 +103,20 @@ pub const TEXT_HELP: &str = r#"
 // TODO Version text
 pub const TEXT_VERSION: &str = concat!("cmp (Rust DiffUtils) ", env!("CARGO_PKG_VERSION"),);
 
+// TODO can this be enhanced with a trait:
+// * get options -> Convert into AppOptions
+// return the option with a unique id, maybe automatically extract it?
 #[derive(Debug)]
 pub enum ParamCmpOption {
     /// Bytes Limit with unparsed number String
-    BytesLimit(String),
     Help,
+    Version,
+    BytesLimit(String),
     /// Ignore Initial with unparsed number String
     IgnoreInitial(String),
     PrintBytes,
     Silent,
     Verbose,
-    Version,
 }
 
 impl From<&ParsedOption> for ParamCmpOption {
@@ -147,8 +150,8 @@ impl From<&ParsedOption> for ParamCmpOption {
 ///
 /// Successful parsing will return ParamsCmp, \
 /// -- help und --version will return an Info message, \
-/// Error will be returned as [ParamsCmpParseError] in the function Result.
-#[derive(Debug, PartialEq)]
+/// Error will be returned as [ParamsCmpError] in the function Result.
+#[derive(Debug, Clone, PartialEq)]
 pub enum ParamsCmpOk {
     Info(ParamsCmpInfo),
     ParamsCmp(ParamsCmp),
@@ -158,7 +161,7 @@ pub enum ParamsCmpOk {
 ///
 /// The parser returns these enums to the caller, allowing the caller can identify this as information,
 /// so that the program exit code is SUCCESS(0).
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ParamsCmpInfo {
     Help,
     Version,
@@ -319,6 +322,7 @@ impl Default for ParamsCmp {
 impl ParamsCmp {
     pub fn parse_params<I: Iterator<Item = OsString>>(opts: Peekable<I>) -> ResultParamsCmpParse {
         let p_gen = ArgParser::parse_params(&ARG_OPTIONS, opts)?;
+
         Self::try_from(&p_gen)
     }
 
@@ -338,7 +342,7 @@ impl ParamsCmp {
                     params.set_bytes_limit(parsed_option)?;
                     // if let Err(e) = params.set_bytes_limit(parsed_option) {
                     //     return Err(e);
-                    //     // return Err(ParamsCmpParseError::from_parse_byte_error(e, opt_gen));
+                    //     // return Err(ParamsCmpError::from_parse_byte_error(e, opt_gen));
                     // }
                 }
                 ParamCmpOption::Help => {
@@ -426,17 +430,17 @@ impl ParamsCmp {
             }
             Err(e) => Err(ParamsCmpError::from_parse_byte_error(e, parsed_option)),
             // match e {
-            //     ParseBytesError::NoValue => Err(ParamsCmpParseError::ParseGenError(
+            //     ParseBytesError::NoValue => Err(ParamsCmpError::ParseGenError(
             //         ParamsGenParseError::ArgForOptionMissing(parsed_option.clone()),
             //     )),
             //     ParseBytesError::PosOverflow => {
-            //         Err(ParamsCmpParseError::BytesPosOverflow(parsed_option.clone()))
+            //         Err(ParamsCmpError::BytesPosOverflow(parsed_option.clone()))
             //     }
-            //     ParseBytesError::InvalidNumber => Err(ParamsCmpParseError::BytesInvalidNumber(
+            //     ParseBytesError::InvalidNumber => Err(ParamsCmpError::BytesInvalidNumber(
             //         parsed_option.clone(),
             //     )),
             //     ParseBytesError::InvalidUnit => {
-            //         Err(ParamsCmpParseError::BytesInvalidUnit(parsed_option.clone()))
+            //         Err(ParamsCmpError::BytesInvalidUnit(parsed_option.clone()))
             //     }
             // },
         }
@@ -451,7 +455,7 @@ impl ParamsCmp {
         parsed_option: &ParsedOption,
     ) -> Result<bool, ParamsCmpError> {
         // if bytes.is_empty() {
-        //     return Err(ParamsCmpParseError::ArgForOptionMissing(
+        //     return Err(ParamsCmpError::ArgForOptionMissing(
         //         BytesType::IgnoreInitial,
         //     ));
         // }
@@ -694,7 +698,7 @@ mod tests {
             // Failure: --ignore-initial as operands with 1 2Y (which is greater than u64)
             assert_eq!(
                 parse("cmp foo bar 1 2Y"),
-                Err(ParamsCmpParseError::BytesPosOverflow(ParsedOption {
+                Err(ParamsCmpError::BytesPosOverflow(ParsedOption {
                     app_option: &OPT_IGNORE_INITIAL,
                     arg_for_option: Some("2Y".to_string()),
                     name_type_used: OptionNameTypeUsed::LongName
@@ -853,7 +857,7 @@ mod tests {
         // TODO This is allowed
         // assert_eq!(
         //     parse("cmp -n 1kb foo bar"),
-        //     Err(ParamsCmpParseError::BytesInvalidUnit(
+        //     Err(ParamsCmpError::BytesInvalidUnit(
         //         BytesType::Limit,
         //         "1kb".to_string(),
         //     )),
@@ -1003,7 +1007,7 @@ mod tests {
             ),
         }
 
-        #[cfg(not(feature = "cmp_allow_case_insensitive_byte_units"))]
+        #[cfg(not(feature = "allow_case_insensitive_byte_units"))]
         {
             // wrong unit
             let r = parse("cmp --ignore-initial=1mb foo bar");

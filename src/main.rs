@@ -16,12 +16,14 @@ use crate::arg_parser::{DiffUtility, DiffUtilityError};
 
 mod arg_parser;
 mod cmp;
+// mod cmp_org;
 mod context_diff;
 mod diff;
 mod ed_diff;
 mod macros;
 mod normal_diff;
 mod params;
+mod sdiff;
 mod side_diff;
 mod unified_diff;
 mod utils;
@@ -80,7 +82,7 @@ fn main() -> ExitCode {
             // DiffUtility does not allow these, they return an error.
             DiffUtility::Diff3 => todo!(),
             DiffUtility::Patch => todo!(),
-            DiffUtility::SDiff => todo!(),
+            DiffUtility::SDiff => sdiff::main(args),
         },
         Err(e) => {
             let name = match &e {

@@ -1,7 +1,7 @@
-/// This is a little helper to create the AppOptions when using ParamsGen.
-///
-/// Create the file by 'diff --help > diff_help.txt'". \
-/// Then 'cargo run -- diff_help.txt'
+//! This is a little helper to create the AppOptions when using ParamsGen.
+//!
+//! Create the file by 'diff --help > diff_help.txt'". \
+//! Then 'cargo run -- diff_help.txt'
 use std::ffi::OsString;
 use std::fmt::Display;
 use std::fs::{self, File};
@@ -9,7 +9,7 @@ use std::io::{self, BufRead, BufReader};
 use std::path::Path;
 // mod test;
 
-const SORT_ALPHABETICALLY: bool = false;
+const SORT_ALPHABETICALLY: bool = true;
 const SKIP_HELP_VERSION: bool = true;
 
 /// This contains the args/options the app allows. They must be all of const value.
@@ -20,6 +20,44 @@ pub struct AppOption {
     pub short: Option<char>,
     pub has_arg: bool,
     pub arg_default: Option<String>,
+    pub line: String,
+}
+
+impl AppOption {
+    fn option_name_snake_case(&self) -> String {
+        // let mut opt = self.long_name.clone();
+        // Self::capitalize_words(&mut opt);
+        self.long_name.to_ascii_lowercase().replace("-", "_")
+    }
+
+    fn option_const_name(&self) -> String {
+        format!(
+            "OPT_{}",
+            self.long_name.to_ascii_uppercase().replace("-", "_")
+        )
+    }
+
+    #[allow(unused)]
+    fn capitalize_words(s: &mut String) {
+        let mut capitalize_next = true;
+
+        let result: String = s
+            .chars()
+            .map(|c| {
+                if c == ' ' || c == '-' {
+                    capitalize_next = true;
+                    c
+                } else if capitalize_next {
+                    capitalize_next = false;
+                    c.to_uppercase().next().unwrap_or(c)
+                } else {
+                    c
+                }
+            })
+            .collect();
+
+        *s = result.replace("-", "");
+    }
 }
 
 impl Display for AppOption {
@@ -31,17 +69,17 @@ impl Display for AppOption {
     // };
 
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "const {}: AppOption = AppOption {{", self.option)?;
+        writeln!(
+            f,
+            "pub(super) const {}: AppOption = AppOption {{",
+            self.option
+        )?;
         writeln!(f, "    long_name: \"{}\",", self.long_name)?;
         writeln!(f, "    short: {:?},", self.short)?;
         writeln!(f, "    has_arg: {},", self.has_arg)?;
         writeln!(f, "    arg_default: {:?},", self.arg_default)?;
         write!(f, "}};")
     }
-}
-
-fn option_name(long_name: &str) -> String {
-    format!("OPT_{}", long_name.to_ascii_uppercase().replace("-", "_"))
 }
 
 fn main() {
@@ -60,9 +98,9 @@ fn main() {
                 println!("{}: {}", i + 1, line);
             }
             let mut content = format!("// AppOptions for {}\n", file_name.to_string_lossy());
-            content.push_str("// Check everything and add default values!\n\n");
+            content.push_str("// TODO Check everything and add default values!\n\n");
             content.push_str(&parse_to_app_options(&lines));
-            let out_file = format!("{}.options.txt", file_name.to_string_lossy());
+            let out_file = format!("{}_options.txt", file_name.to_string_lossy());
             println!("Writing result into {out_file}");
             if let Err(e) = write_to_file(&out_file, &content) {
                 eprintln!("Error writing file: {}", e);
@@ -75,11 +113,17 @@ fn main() {
 fn parse_to_app_options(lines: &[String]) -> String {
     println!("\nParsing:");
     let mut opts = Vec::new();
+    // Create the output.
+    let mut content = String::new();
     for (i, line) in lines.iter().enumerate() {
         // find short name
         if line.trim().starts_with("-") {
-            println!("{}: {}", i + 1, line);
             let mut opt = AppOption::default();
+            opt.line = line.clone();
+            println!("{}: {}", i + 1, line);
+            content.push_str("// ");
+            content.push_str(line);
+            content.push('\n');
             let p = line.find('-').unwrap();
             if line.as_bytes()[p + 1] != b'-' {
                 opt.short = Some(line.as_bytes()[p + 1] as char);
@@ -108,11 +152,14 @@ fn parse_to_app_options(lines: &[String]) -> String {
                         None => long,
                     };
 
-                    opt.option = option_name(&opt.long_name);
+                    opt.option = opt.option_const_name();
                     println!("   Option: {opt}");
                     opts.push(opt);
                 }
-                None => panic!("no long name found, starting with --"),
+                None => content.push_str(&format!(
+                    "*** ERROR parsing in line {i}: no --long_name found for option '{}'!\n",
+                    opt.short.unwrap()
+                )),
             }
         }
     }
@@ -123,7 +170,6 @@ fn parse_to_app_options(lines: &[String]) -> String {
     }
 
     // create the consts
-    let mut content = String::new();
     for opt in opts.iter() {
         if SKIP_HELP_VERSION {
             match opt.long_name.as_str() {
@@ -137,9 +183,9 @@ fn parse_to_app_options(lines: &[String]) -> String {
     }
 
     // create the array
-    content.push_str("\n// Array for ParamsGen\n");
+    content.push_str("\n// Array for ArgParser\n");
     content.push_str(&format!(
-        "const ARG_OPTIONS: [AppOption; {}] = [\n",
+        "pub(super) const APP_OPTIONS: [AppOption; {}] = [\n",
         opts.len()
     ));
     for opt in opts.iter() {
@@ -148,22 +194,77 @@ fn parse_to_app_options(lines: &[String]) -> String {
     }
     content.push_str("];\n");
 
-    // create from function
-    content.push_str("\n// From function for your parser\n");
-    content.push_str("impl From<&ParsedOption> for <ParamXxx> {\n");
-    content.push_str("    fn from(opt: &ParsedOption) -> Self {\n");
-    content.push_str("        match *opt.app_option {\n");
+    // create struct
+    content.push_str("\n// The Param struct\n");
+    content.push_str("#[derive(Debug, Clone, Eq, PartialEq)]\n");
+    content.push_str("pub struct ParamsXxx {\n");
+    content.push_str("    /// Identifier\n");
+    content.push_str("    pub util: DiffUtility,\n");
+    content.push_str("    // pub executable: OsString,\n");
+    content.push_str("    pub from: OsString,\n");
+    content.push_str("    pub to: OsString,\n");
     for opt in opts.iter() {
-        content.push_str(&format!("            {} => todo!(), \n", opt.option));
+        content.push_str("    /// ");
+        content.push_str(&opt.line.trim());
+        content.push('\n');
+        let t = if opt.has_arg { "Option<Type>" } else { "bool" };
+        let s = format!("    pub {}: {t},\n", opt.option_name_snake_case()); //.replace("-", "_"))
+        content.push_str(&s);
+        // content.push('\n');
+    }
+    content.push_str("}\n");
+
+    // create match for ArgParser output
+    content.push_str("\n// match for ArgParser output\n");
+    content.push_str("fn try_from(parser: &ArgParser) -> ResultParamsXxxParse {\n");
+    content.push_str("    let mut params = Self {\n");
+    content.push_str("        util: DiffUtility::XXX,\n");
+    content.push_str("        ..Default::default()\n");
+    content.push_str("    };\n");
+    content.push_str("    //  {\n");
+    content.push_str("    //     // executable: parser.executable.clone(),\n");
+    content.push_str("    //     ..Default::default()\n");
+    content.push_str("    // };\n");
+    content.push_str("\n");
+    content.push_str("    // set options\n");
+    content.push_str("    for parsed_option in &parser.options_parsed {\n");
+    content.push_str("    dbg!(parsed_option);\n");
+    content.push_str("    match *parsed_option.app_option {\n");
+    for opt in opts.iter() {
+        let s = if opt.has_arg {
+            &format!("params.set_{}()?", opt.option_name_snake_case())
+        } else if opt.long_name == "help" {
+            "return Ok(ParamsXxxOk::Info(ParamsXxxInfo::Help))"
+        } else if opt.long_name == "version" {
+            "return Ok(ParamsXxxOk::Info(ParamsXxxInfo::Version))"
+        } else {
+            &format!("params.{} = true", opt.option_name_snake_case())
+        };
+        content.push_str(&format!("        {} => {s}, \n", opt.option));
     }
     content.push_str(
         "\n        // This is not an error, but a todo. Unfortunately an Enum is not possible.\n",
     );
-    content.push_str("        _ => todo!(\"Err Option: {}\", opt.app_option.long_name),\n");
-    content.push_str("        }\n");
+    content
+        .push_str("        _ => todo!(\"Err Option: {}\", parsed_option.app_option.long_name),\n");
     content.push_str("    }\n");
     content.push_str("}\n");
 
+    //     content.push_str("\n// From function for your parser\n");
+    //     content.push_str("impl From<&ParsedOption> for <ParamXxx> {\n");
+    //     content.push_str("    fn from(opt: &ParsedOption) -> Self {\n");
+    //     content.push_str("        match *opt.app_option {\n");
+    //     for opt in opts.iter() {
+    //         content.push_str(&format!("            {} => todo!(), \n", opt.option));
+    //     }
+    //     content.push_str(
+    //         "\n        // This is not an error, but a todo. Unfortunately an Enum is not possible.\n",
+    //     );
+    //     content.push_str("        _ => todo!(\"Err Option: {}\", opt.app_option.long_name),\n");
+    //     content.push_str("        }\n");
+    //     content.push_str("    }\n");
+    //     content.push_str("}\n");
+    //
     content
 }
 

@@ -545,7 +545,7 @@ impl ParamsGen {
     /// Returns a multiplier depending on the given unit, e.g. 'KiB' -> 1024,
     /// which then can be used to calculate the final number of bytes.
     /// Following GNU documentation: https://www.gnu.org/software/diffutils/manual/html_node/cmp-Options.html
-    #[cfg(not(feature = "cmp_allow_case_insensitive_byte_units"))]
+    #[cfg(not(feature = "allow_case_insensitive_byte_units"))]
     pub fn parse_number_unit(unit: &str) -> ResultBytesParse {
         // Note that GNU cmp advertises supporting up to Y, but fails if you try
         // to actually use anything beyond E.
@@ -591,7 +591,7 @@ impl ParamsGen {
     /// Returns a multiplier depending on the given unit, e.g. 'KiB' -> 1024,
     /// which then can be used to calculate the final number of bytes.
     /// Following GNU documentation: https://www.gnu.org/software/diffutils/manual/html_node/cmp-Options.html
-    #[cfg(feature = "cmp_allow_case_insensitive_byte_units")]
+    #[cfg(feature = "allow_case_insensitive_byte_units")]
     pub fn parse_number_unit(unit: &str) -> ResultBytesParse {
         // Note that GNU cmp advertises supporting up to Y, but fails if you try
         // to actually use anything beyond E.

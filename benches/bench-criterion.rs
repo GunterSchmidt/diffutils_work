@@ -7,7 +7,7 @@ use diffutilslib::{
     arg_parser::ArgParser,
     cmp::params_cmp::{ParamsCmp, ParamsCmpOk},
 };
-use std::{ffi::OsString, time::Duration};
+use std::{ffi::OsString, process::Command, time::Duration};
 
 const WARM_UP_TIME_MS: u64 = 500;
 const MEASUREMENT_TIME_MS: u64 = 2000;
@@ -77,4 +77,37 @@ fn str_to_options(opt: &str) -> Vec<OsString> {
         .collect();
 
     s
+}
+
+#[allow(unused)]
+// fn bench_binary_execution(c: &mut BenchmarkGroup<'_, WallTime>) {
+fn bench_binary_execution_cmp(c: &mut Criterion) {
+    c.bench_function("GNU cmp", |b| {
+        b.iter(|| {
+            let _status = Command::new("cmp")
+                .arg("from_file_100000.txt")
+                .arg("to_file_100000.txt")
+                .arg("-s")
+                .status()
+                .expect("Failed to execute binary");
+
+            // assert!(status.success());
+        })
+    });
+
+    c.bench_function("cmp binary", |b| {
+        b.iter(|| {
+            let _status = Command::new("target/release/diffutils")
+                .arg("cmp")
+                .arg("from_file_100000.txt")
+                .arg("to_file_100000.txt")
+                .arg("-s")
+                // .arg("--lines")
+                // .arg(black_box("10000"))
+                .status()
+                .expect("Failed to execute binary");
+
+            // assert!(status.success());
+        })
+    });
 }
