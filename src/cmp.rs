@@ -3,24 +3,11 @@
 // For the full copyright and license information, please view the LICENSE-*
 // files that was distributed with this source code.
 
-/// TODO General Topics
-/// - ParamsGen document
-/// - ParamsGen EXE_NAME depending on app
-/// - arg default
-/// - PR 183, branch u64/u128
-/// - branch bench
-/// - branch tests
-///   - $ cargo run -- cmp old.txt new.txt -n1 other result
-///   - $ cargo run -- cmp old.txt new.txt -bln50
-/// - integration.rs: adjust to new error messages
-///
-/// Requirements Param
-/// - Return String for Help but mark as OK. Probably Enum String or Params.
-/// - Separation of concerns, no output or exit of the app
-/// - Reusable components
 // pub mod params;
 pub mod params_cmp;
-use crate::cmp::params_cmp::{ParamsCmp, ParamsCmpOk};
+pub mod params_cmp_def;
+use crate::cmp::params_cmp::ParamsCmp;
+use crate::cmp::params_cmp_def::ParamsCmpOk;
 use crate::utils::format_failure_to_read_input_file;
 use std::env::{self, ArgsOs};
 use std::ffi::OsString;
@@ -81,12 +68,12 @@ pub enum Cmp {
 /// Files are limited to u64 bytes and u64 lines.
 // TODO CmpError
 pub fn cmp(params: &ParamsCmp) -> Result<Cmp, String> {
-    let mut from = prepare_reader(&params.file_1, &params.ignore_initial_bytes_file_1, params)?;
-    let mut to = prepare_reader(&params.file_2, &params.ignore_initial_bytes_file_2, params)?;
+    let mut from = prepare_reader(&params.from, &params.ignore_initial_bytes_from, params)?;
+    let mut to = prepare_reader(&params.to, &params.ignore_initial_bytes_to, params)?;
 
     let mut offset_width = params.bytes_limit.unwrap_or(Bytes::MAX);
 
-    if let (Ok(a_meta), Ok(b_meta)) = (fs::metadata(&params.file_1), fs::metadata(&params.file_2)) {
+    if let (Ok(a_meta), Ok(b_meta)) = (fs::metadata(&params.from), fs::metadata(&params.to)) {
         #[cfg(not(target_os = "windows"))]
         let (a_size, b_size) = (a_meta.size(), b_meta.size());
 
@@ -120,7 +107,7 @@ pub fn cmp(params: &ParamsCmp) -> Result<Cmp, String> {
             Err(e) => {
                 return Err(format_failure_to_read_input_file(
                     &params.util.to_os_string(),
-                    &params.file_1,
+                    &params.from,
                     &e,
                 ));
             }
@@ -131,7 +118,7 @@ pub fn cmp(params: &ParamsCmp) -> Result<Cmp, String> {
             Err(e) => {
                 return Err(format_failure_to_read_input_file(
                     &params.util.to_os_string(),
-                    &params.file_2,
+                    &params.to,
                     &e,
                 ));
             }
@@ -144,9 +131,9 @@ pub fn cmp(params: &ParamsCmp) -> Result<Cmp, String> {
 
         if from_buf.is_empty() || to_buf.is_empty() {
             let eof_on = if from_buf.is_empty() {
-                &params.file_1.to_string_lossy()
+                &params.from.to_string_lossy()
             } else {
-                &params.file_2.to_string_lossy()
+                &params.to.to_string_lossy()
             };
 
             report_eof(at_byte, at_line, start_of_line, eof_on, params);
@@ -267,8 +254,8 @@ pub fn main(opts: Peekable<ArgsOs>) -> ExitCode {
         }
     };
 
-    if params.file_1 == "-" && params.file_2 == "-"
-        || same_file::is_same_file(&params.file_1, &params.file_2).unwrap_or(false)
+    if params.from == "-" && params.to == "-"
+        || same_file::is_same_file(&params.from, &params.to).unwrap_or(false)
     {
         return ExitCode::SUCCESS;
     }
@@ -500,8 +487,8 @@ fn report_difference(from_byte: u8, to_byte: u8, at_byte: Bytes, at_line: u64, p
     };
     print!(
         "{} {} differ: {term} {}, line {}",
-        &params.file_1.to_string_lossy(),
-        &params.file_2.to_string_lossy(),
+        &params.from.to_string_lossy(),
+        &params.to.to_string_lossy(),
         at_byte,
         at_line
     );

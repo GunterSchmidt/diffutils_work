@@ -5,8 +5,7 @@ use const_format::concatcp;
 
 use crate::{
     arg_parser::{
-        AppOption, ArgParserError, ParsedOption, OPT_HELP, OPT_VERSION, TEXT_COPYRIGHT,
-        TEXT_HELP_FOOTER,
+        AppOption, ArgParserError, ParsedOption, OPT_HELP, OPT_VERSION, TEXT_HELP_FOOTER,
     },
     sdiff::{params_sdiff::ParamsSdiff, EXE_NAME},
     // sdiff::{Bytes, IgnInit, EXE_NAME},
@@ -19,113 +18,95 @@ pub(super) const OPT_DIFF_PROGRAM: AppOption = AppOption {
     long_name: "diff-program",
     short: None,
     has_arg: true,
-    arg_default: None,
 };
 pub(super) const OPT_EXPAND_TABS: AppOption = AppOption {
     long_name: "expand-tabs",
     short: Some('t'),
     has_arg: false,
-    arg_default: None,
 };
 pub(super) const OPT_IGNORE_ALL_SPACE: AppOption = AppOption {
     long_name: "ignore-all-space",
     short: Some('W'),
     has_arg: false,
-    arg_default: None,
 };
 pub(super) const OPT_IGNORE_BLANK_LINES: AppOption = AppOption {
     long_name: "ignore-blank-lines",
     short: Some('B'),
     has_arg: false,
-    arg_default: None,
 };
 pub(super) const OPT_IGNORE_CASE: AppOption = AppOption {
     long_name: "ignore-case",
     short: Some('i'),
     has_arg: false,
-    arg_default: None,
 };
 pub(super) const OPT_IGNORE_MATCHING_LINES: AppOption = AppOption {
     long_name: "ignore-matching-lines",
     short: Some('I'),
     has_arg: true,
-    arg_default: None,
 };
 pub(super) const OPT_IGNORE_SPACE_CHANGE: AppOption = AppOption {
     long_name: "ignore-space-change",
     short: Some('b'),
     has_arg: false,
-    arg_default: None,
 };
 pub(super) const OPT_IGNORE_TAB_EXPANSION: AppOption = AppOption {
     long_name: "ignore-tab-expansion",
     short: Some('E'),
     has_arg: false,
-    arg_default: None,
 };
 pub(super) const OPT_IGNORE_TRAILING_SPACE: AppOption = AppOption {
     long_name: "ignore-trailing-space",
     short: Some('Z'),
     has_arg: false,
-    arg_default: None,
 };
 pub(super) const OPT_LEFT_COLUMN: AppOption = AppOption {
     long_name: "left-column",
     short: Some('l'),
     has_arg: false,
-    arg_default: None,
 };
 pub(super) const OPT_MINIMAL: AppOption = AppOption {
     long_name: "minimal",
     short: Some('d'),
     has_arg: false,
-    arg_default: None,
 };
 pub(super) const OPT_OUTPUT: AppOption = AppOption {
     long_name: "output",
     short: Some('o'),
     has_arg: true,
-    arg_default: None,
 };
 pub(super) const OPT_SPEED_LARGE_FILES: AppOption = AppOption {
     long_name: "speed-large-files",
     short: Some('H'),
     has_arg: false,
-    arg_default: None,
 };
 pub(super) const OPT_STRIP_TRAILING_CR: AppOption = AppOption {
     long_name: "strip-trailing-cr",
     short: None,
     has_arg: false,
-    arg_default: None,
 };
 pub(super) const OPT_SUPPRESS_COMMON_LINES: AppOption = AppOption {
     long_name: "suppress-common-lines",
     short: Some('s'),
     has_arg: false,
-    arg_default: None,
 };
 pub(super) const OPT_TABSIZE: AppOption = AppOption {
     long_name: "tabsize",
     short: None,
     has_arg: true,
-    arg_default: Some("8"),
 };
 pub(super) const OPT_TEXT: AppOption = AppOption {
     long_name: "text",
     short: Some('a'),
     has_arg: false,
-    arg_default: None,
 };
 pub(super) const OPT_WIDTH: AppOption = AppOption {
     long_name: "width",
     short: Some('w'),
     has_arg: true,
-    arg_default: None,
 };
 
 // Array for ParamsGen
-pub(super) const ARG_OPTIONS: [AppOption; 20] = [
+pub(super) const APP_OPTIONS: [AppOption; 20] = [
     OPT_DIFF_PROGRAM,
     OPT_EXPAND_TABS,
     OPT_HELP,
@@ -151,9 +132,7 @@ pub(super) const ARG_OPTIONS: [AppOption; 20] = [
 // TODO Help text rewrite, this is copyrighted by GNU
 pub const TEXT_HELP: &str = concatcp!(
     r#"
-Usage: sdiff FILE1 FILE2 [OPTIONs] 
-Options: Any number of options, may also be in front of the file names. 
-
+Usage: sdiff [OPTION]... FILE1 FILE2
 sdiff is a tool which allows to compare two text files for differences.
 It outputs the differences in a side-by-side view.
 Use 'diff' for a row-by-row view.
@@ -202,29 +181,8 @@ pub const TEXT_VERSION: &str = concat!("sdiff (Rust DiffUtils) ", env!("CARGO_PK
 /// Error will be returned as [ParamsSdiffError] in the function Result.
 #[derive(Debug, PartialEq)]
 pub enum ParamsSdiffOk {
-    Info(ParamsSdiffInfo),
+    Info(String),
     ParamsSdiff(ParamsSdiff),
-}
-
-/// Static texts for '--help' and '--version'.
-///
-/// The parser returns these enums to the caller, allowing to identify this as information,
-/// so the program exit code is SUCCESS(0).
-#[derive(Debug, PartialEq)]
-pub enum ParamsSdiffInfo {
-    Help,
-    Version,
-}
-
-impl Display for ParamsSdiffInfo {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let info = match self {
-            ParamsSdiffInfo::Help => TEXT_HELP,
-            ParamsSdiffInfo::Version => &format!("{TEXT_VERSION}\n{TEXT_COPYRIGHT}"),
-        };
-
-        write!(f, "{}", info)
-    }
 }
 
 /// Contains all parser errors and their text messages.
@@ -238,13 +196,10 @@ pub enum ParamsSdiffError {
     InvalidNumber(ParsedOption),
 
     // (param argument)
-    #[allow(dead_code)] // unclear why this triggers, it is used
-    WidthInvalid(String),
-
+    // WidthInvalid(String),
     /// Having 3 operands or more
     /// (wrong operand)
     ExtraOperand(String),
-    // TODO more errors
 }
 
 impl From<ArgParserError> for ParamsSdiffError {
@@ -273,7 +228,7 @@ impl Display for ParamsSdiffError {
                     opt.short_char_or_empty_string(),
                 ),
             ),
-            ParamsSdiffError::WidthInvalid(param) => write_err(f, &format!("invalid '{param}'")),
+            // ParamsSdiffError::WidthInvalid(param) => write_err(f, &format!("invalid '{param}'")),
         }
     }
 }

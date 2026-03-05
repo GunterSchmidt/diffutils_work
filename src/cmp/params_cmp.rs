@@ -1,285 +1,14 @@
-use std::{ffi::OsString, fmt::Display, iter::Peekable};
+use std::{ffi::OsString, iter::Peekable};
 
 use crate::{
     arg_parser::{
-        AppOption, ArgParser, ArgParserError, DiffUtility, OptionNameTypeUsed, ParseBytesError,
-        ParsedOption, OPT_HELP, OPT_VERSION, TEXT_COPYRIGHT,
+        ArgParser, ArgParserError, DiffUtility, OptionNameTypeUsed, ParsedOption, OPT_HELP,
+        OPT_VERSION,
     },
-    cmp::{Bytes, IgnInit, EXE_NAME},
+    cmp::{params_cmp_def::*, Bytes, IgnInit},
 };
 
 pub type ResultParamsCmpParse = Result<ParamsCmpOk, ParamsCmpError>;
-
-// -b, --print-bytes          print differing bytes
-// -i, --ignore-initial=SKIP         skip first SKIP bytes of both inputs
-// -i, --ignore-initial=SKIP1:SKIP2  skip first SKIP1 bytes of FILE1 and
-//                                     first SKIP2 bytes of FILE2
-// -l, --verbose              output byte numbers and differing byte values
-// -n, --bytes=LIMIT          compare at most LIMIT bytes
-// -s, --quiet, --silent      suppress all normal output
-//     --help                 display this help and exit
-// -v, --version              output version information and exit
-const OPT_BYTES_LIMIT: AppOption = AppOption {
-    long_name: "bytes",
-    short: Some('n'),
-    has_arg: true,
-    arg_default: Some("10"),
-};
-const OPT_IGNORE_INITIAL: AppOption = AppOption {
-    long_name: "ignore-initial",
-    short: Some('i'),
-    has_arg: true,
-    arg_default: None,
-};
-const OPT_PRINT_BYTES: AppOption = AppOption {
-    long_name: "print-bytes",
-    short: Some('b'),
-    has_arg: false,
-    arg_default: None,
-};
-const OPT_QUIET: AppOption = AppOption {
-    long_name: "quiet",
-    short: Some('q'),
-    has_arg: false,
-    arg_default: None,
-};
-const OPT_SILENT: AppOption = AppOption {
-    long_name: "silent",
-    short: Some('s'),
-    has_arg: false,
-    arg_default: None,
-};
-const OPT_VERBOSE: AppOption = AppOption {
-    long_name: "verbose",
-    short: Some('l'),
-    has_arg: false,
-    arg_default: None,
-};
-// must contain OPT_HELP,and OPT_VERSION
-
-const ARG_OPTIONS: [AppOption; 8] = [
-    OPT_BYTES_LIMIT,
-    OPT_IGNORE_INITIAL,
-    OPT_PRINT_BYTES,
-    OPT_QUIET,
-    OPT_SILENT,
-    OPT_VERBOSE,
-    OPT_HELP,
-    OPT_VERSION,
-];
-
-// TODO Help text
-pub const TEXT_HELP: &str = r#"
-        Usage: {} [OPTION]... FILE1 [FILE2 [SKIP1 [SKIP2]]]
-        Compare two files byte by byte.
-
-        The optional SKIP1 and SKIP2 specify the number of bytes to skip
-        at the beginning of each file (zero by default).
-
-        Mandatory arguments to long options are mandatory for short options too.
-          -b, --print-bytes          print differing bytes
-          -i, --ignore-initial=SKIP         skip first SKIP bytes of both inputs
-          -i, --ignore-initial=SKIP1:SKIP2  skip first SKIP1 bytes of FILE1 and
-                                              first SKIP2 bytes of FILE2
-          -l, --verbose              output byte numbers and differing byte values
-          -n, --bytes=LIMIT          compare at most LIMIT bytes
-          -s, --quiet, --silent      suppress all normal output
-              --help                 display this help and exit
-          -v, --version              output version information and exit
-
-        SKIP values may be followed by the following multiplicative suffixes:
-        kB 1000, K 1024, MB 1,000,000, M 1,048,576,
-        GB 1,000,000,000, G 1,073,741,824, and so on for T, P, E, Z, Y.
-
-        If a FILE is '-' or missing, read standard input.
-        Exit status is 0 if inputs are the same, 1 if different, 2 if trouble.
-
-        This utility is part of the uutils project: https://github.com/uutils/
-        Report bugs here: https://github.com/uutils/diffutils/issues
-    "},
-        params.executable.to_string_lossy()
-    );"#;
-
-// TODO Version text
-pub const TEXT_VERSION: &str = concat!("cmp (Rust DiffUtils) ", env!("CARGO_PKG_VERSION"),);
-
-// TODO can this be enhanced with a trait:
-// * get options -> Convert into AppOptions
-// return the option with a unique id, maybe automatically extract it?
-#[derive(Debug)]
-pub enum ParamCmpOption {
-    /// Bytes Limit with unparsed number String
-    Help,
-    Version,
-    BytesLimit(String),
-    /// Ignore Initial with unparsed number String
-    IgnoreInitial(String),
-    PrintBytes,
-    Silent,
-    Verbose,
-}
-
-impl From<&ParsedOption> for ParamCmpOption {
-    fn from(opt: &ParsedOption) -> Self {
-        match *opt.app_option {
-            OPT_BYTES_LIMIT => ParamCmpOption::BytesLimit(
-                opt.arg_for_option
-                    .as_ref()
-                    .expect("Logic error: Must have option arg.")
-                    .clone(),
-            ),
-            OPT_HELP => ParamCmpOption::Help,
-            OPT_IGNORE_INITIAL => ParamCmpOption::IgnoreInitial(
-                opt.arg_for_option
-                    .as_ref()
-                    .expect("Logic error: Must have option arg.")
-                    .clone(),
-            ),
-            OPT_PRINT_BYTES => ParamCmpOption::PrintBytes,
-            OPT_QUIET | OPT_SILENT => ParamCmpOption::Silent,
-            OPT_VERBOSE => ParamCmpOption::Verbose,
-            OPT_VERSION => ParamCmpOption::Version,
-
-            // This is not an error, but a todo. Unfortunately an Enum is not possible.
-            _ => todo!("Err Option: {}", opt.app_option.long_name),
-        }
-    }
-}
-
-/// Success return type for parsing of params.
-///
-/// Successful parsing will return ParamsCmp, \
-/// -- help und --version will return an Info message, \
-/// Error will be returned as [ParamsCmpError] in the function Result.
-#[derive(Debug, Clone, PartialEq)]
-pub enum ParamsCmpOk {
-    Info(ParamsCmpInfo),
-    ParamsCmp(ParamsCmp),
-}
-
-/// Static texts for --help and --version.
-///
-/// The parser returns these enums to the caller, allowing the caller can identify this as information,
-/// so that the program exit code is SUCCESS(0).
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ParamsCmpInfo {
-    Help,
-    Version,
-}
-
-impl Display for ParamsCmpInfo {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let info = match self {
-            ParamsCmpInfo::Help => TEXT_HELP,
-            ParamsCmpInfo::Version => &format!("{TEXT_VERSION}\n{TEXT_COPYRIGHT}"),
-        };
-
-        write!(f, "{}", info)
-    }
-}
-
-/// Contains all parser errors and their text messages.
-#[derive(Debug, PartialEq)]
-pub enum ParamsCmpError {
-    /// Bubbled up error
-    ArgParserError(ArgParserError),
-
-    /// bytes number incorrect
-    BytesInvalidNumber(ParsedOption),
-
-    /// bytes unit incorrect, e.g. 1000LB
-    BytesInvalidUnit(ParsedOption),
-
-    /// bytes number too large (>u64)
-    BytesPosOverflow(ParsedOption),
-
-    /// Having 5 operands or more
-    /// (wrong operand)
-    ExtraOperand(String),
-
-    // /// Ignore Initial is given as extra operand and also as option. \
-    // /// This is not an original GNU cmp error message, where the operands are ignored.
-    // /// (3rd operand, 4th operand, --i value).
-    // IgnoreInitialDouble(String, String, String),
-    SilentPrintBytesIncompatible,
-    SilentVerboseIncompatible,
-}
-
-impl ParamsCmpError {
-    pub fn from_parse_byte_error(
-        parse_byte_error: ParseBytesError,
-        parsed_option: &ParsedOption,
-        // app_option: &AppOption,
-        // name_type_used: OptionNameTypeUsed,
-    ) -> Self {
-        match parse_byte_error {
-            ParseBytesError::NoValue => {
-                Self::ArgParserError(ArgParserError::ArgForOptionMissing(parsed_option.clone()))
-            }
-            ParseBytesError::PosOverflow => {
-                Self::BytesPosOverflow(parsed_option.clone())
-                // Self::ParseGenError(ParamsGenParseError::ArgForOptionMissing(
-                //     parsed_option.app_option,
-                //     parsed_option.name_type_used,
-                // ))
-            }
-            ParseBytesError::InvalidNumber => Self::BytesInvalidNumber(parsed_option.clone()),
-            ParseBytesError::InvalidUnit => Self::BytesInvalidUnit(parsed_option.clone()),
-        }
-    }
-}
-
-impl From<ArgParserError> for ParamsCmpError {
-    fn from(err: ArgParserError) -> Self {
-        Self::ArgParserError(err)
-    }
-}
-
-impl Display for ParamsCmpError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Writes the error message, adds cmp: and the --help information.
-        fn write_err(f: &mut std::fmt::Formatter<'_>, msg: &str) -> Result<(), std::fmt::Error> {
-            ArgParserError::write_err(f, EXE_NAME, msg)
-        }
-
-        // TODO Short and Long name errors
-        match self {
-            ParamsCmpError::ArgParserError(e) => write_err(f, &e.to_string()),
-
-            ParamsCmpError::BytesInvalidNumber(opt) | ParamsCmpError::BytesInvalidUnit(opt) => {
-                write_err(
-                    f,
-                    &format!(
-                        "invalid '--{}' value '{}'",
-                        opt.app_option.long_name,
-                        opt.arg_for_option
-                            .as_ref()
-                            .expect("Logic error, number must be given.")
-                    ),
-                )
-            }
-            ParamsCmpError::BytesPosOverflow(opt) => write_err(
-                f,
-                &format!(
-                    "invalid '--{}' value (too large) '{}'",
-                    opt.app_option.long_name,
-                    opt.arg_for_option
-                        .as_ref()
-                        .expect("Logic error, number must be given.")
-                ),
-            ),
-            ParamsCmpError::ExtraOperand(opt) => write_err(f, &format!("extra operand '{opt}'")),
-            ParamsCmpError::SilentPrintBytesIncompatible => write_err(
-                f,
-                "options '--print-bytes' ('-b') and '--silent' ('-s') are incompatible",
-            ),
-            ParamsCmpError::SilentVerboseIncompatible => write_err(
-                f,
-                "options '--verbose' ('-l') and '--silent' ('-s') are incompatible",
-            ),
-        }
-    }
-}
 
 /// Holds the given command line arguments except "--version" and "--help".
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -287,19 +16,29 @@ pub struct ParamsCmp {
     /// Identifier
     pub util: DiffUtility,
     // pub executable: OsString,
-    pub file_1: OsString,
-    pub file_2: OsString,
-    /// If None will be set to 0.
-    pub ignore_initial_bytes_file_1: Option<IgnInit>,
-    pub ignore_initial_bytes_file_2: Option<IgnInit>,
+    pub from: OsString,
+    pub to: OsString,
+    /// -n, --bytes=LIMIT          compare at most LIMIT bytes
     /// cmp from diffutils has a limit of i64::MAX (9_223_372_036_854_775_807)
     /// If None limit will be set to Bytes::MAX.
     pub bytes_limit: Option<Bytes>,
+    // /// --help                     display this help and exit
+    // pub help: bool,
+    /// -i, --ignore-initial=SKIP         skip first SKIP bytes of both inputs
+    /// If None will be set to 0.
+    pub ignore_initial_bytes_from: Option<IgnInit>,
+    /// -i, --ignore-initial=SKIP1:SKIP2  skip first SKIP1 bytes of FILE1 and
+    pub ignore_initial_bytes_to: Option<IgnInit>,
+    /// -b, --print-bytes          print differing bytes
     pub print_bytes: bool,
-    // use set_silent
+    /// -s, --quiet, --silent      suppress all normal output \
+    /// Do not set directly, use set_silent().
     pub silent: bool,
-    // use set_verbose
+    /// -l, --verbose              output byte numbers and differing byte values \
+    /// Do not set directly, use set_verbose().
     pub verbose: bool,
+    // /// -v, --version              output version information and exit \
+    // pub version: bool,
 }
 
 impl Default for ParamsCmp {
@@ -307,10 +46,10 @@ impl Default for ParamsCmp {
         Self {
             util: DiffUtility::Cmp,
             // executable: Default::default(),
-            file_1: Default::default(),
-            file_2: Default::default(),
-            ignore_initial_bytes_file_1: Default::default(),
-            ignore_initial_bytes_file_2: Default::default(),
+            from: Default::default(),
+            to: Default::default(),
+            ignore_initial_bytes_from: Default::default(),
+            ignore_initial_bytes_to: Default::default(),
             bytes_limit: Default::default(),
             print_bytes: Default::default(),
             silent: Default::default(),
@@ -321,45 +60,37 @@ impl Default for ParamsCmp {
 
 impl ParamsCmp {
     pub fn parse_params<I: Iterator<Item = OsString>>(opts: Peekable<I>) -> ResultParamsCmpParse {
-        let p_gen = ArgParser::parse_params(&ARG_OPTIONS, opts)?;
+        let parser = ArgParser::parse_params(&APP_OPTIONS, opts)?;
 
-        Self::try_from(&p_gen)
+        Self::try_from(&parser)
     }
 
-    fn try_from(p_gen: &ArgParser) -> ResultParamsCmpParse {
+    fn try_from(parser: &ArgParser) -> ResultParamsCmpParse {
         let mut params = Self::default();
-        //  {
-        //     // executable: p_gen.executable.clone(),
-        //     ..Default::default()
-        // };
 
         // set options
-        for parsed_option in &p_gen.options_parsed {
-            let opt = ParamCmpOption::from(parsed_option);
-            // dbg!(&parsed_option, &opt);
-            match opt {
-                ParamCmpOption::BytesLimit(_limit) => {
+        for parsed_option in &parser.options_parsed {
+            // dbg!(&parsed_option);
+            match *parsed_option.app_option {
+                OPT_BYTES_LIMIT => {
                     params.set_bytes_limit(parsed_option)?;
-                    // if let Err(e) = params.set_bytes_limit(parsed_option) {
-                    //     return Err(e);
-                    //     // return Err(ParamsCmpError::from_parse_byte_error(e, opt_gen));
-                    // }
                 }
-                ParamCmpOption::Help => {
-                    return Ok(ParamsCmpOk::Info(ParamsCmpInfo::Help));
-                }
-                ParamCmpOption::IgnoreInitial(_skip1_2) => {
+                OPT_HELP => return Ok(ParamsCmpOk::Info(ArgParser::add_copyright(TEXT_HELP))),
+                OPT_IGNORE_INITIAL => {
                     params.set_skip_bytes_files(parsed_option)?;
                 }
-                ParamCmpOption::PrintBytes => params.set_print_bytes()?,
-                ParamCmpOption::Silent => params.set_silent()?,
-                ParamCmpOption::Verbose => params.set_verbose()?,
-                ParamCmpOption::Version => return Ok(ParamsCmpOk::Info(ParamsCmpInfo::Version)),
+                OPT_PRINT_BYTES => params.set_print_bytes()?,
+                OPT_QUIET | OPT_SILENT => params.set_silent()?,
+                OPT_VERBOSE => params.set_verbose()?,
+                OPT_VERSION => return Ok(ParamsCmpOk::Info(TEXT_VERSION.to_string())),
+
+                // This is not an error, but a todo. Unfortunately an Enum is not possible.
+                _ => todo!("Err Option: {}", parsed_option.app_option.long_name),
             }
         }
 
         // set operands
-        match p_gen.operands.len() {
+        match parser.operands.len() {
             0 => {
                 return Err(ParamsCmpError::ArgParserError(ArgParserError::NoOperand(
                     params.util,
@@ -367,24 +98,24 @@ impl ParamsCmp {
             }
             // If only file_1 is set, then file_2 defaults to '-', so it reads from StandardInput.
             1 => {
-                params.file_1 = p_gen.operands[0].clone();
-                params.file_2 = OsString::from("-");
+                params.from = parser.operands[0].clone();
+                params.to = OsString::from("-");
             }
             2..=4 => {
-                params.file_1 = p_gen.operands[0].clone();
-                params.file_2 = p_gen.operands[1].clone();
+                params.from = parser.operands[0].clone();
+                params.to = parser.operands[1].clone();
                 // ignore if ignore-initial is already set by option
-                if p_gen.operands.len() > 2 && params.ignore_initial_bytes_file_1.is_none() {
+                if parser.operands.len() > 2 && params.ignore_initial_bytes_from.is_none() {
                     // normally [set_skip_bytes_file] would be used, but GNU cmp does not set the 2nd parameter if operand is used.
                     params.set_skip_bytes_file_1(&ParsedOption {
                         app_option: &OPT_IGNORE_INITIAL,
-                        arg_for_option: Some(p_gen.operands[2].to_string_lossy().to_string()),
+                        arg_for_option: Some(parser.operands[2].to_string_lossy().to_string()),
                         name_type_used: OptionNameTypeUsed::LongName,
                     })?;
-                    if p_gen.operands.len() > 3 {
+                    if parser.operands.len() > 3 {
                         params.set_skip_bytes_file_2(&ParsedOption {
                             app_option: &OPT_IGNORE_INITIAL,
-                            arg_for_option: Some(p_gen.operands[3].to_string_lossy().to_string()),
+                            arg_for_option: Some(parser.operands[3].to_string_lossy().to_string()),
                             name_type_used: OptionNameTypeUsed::LongName,
                         })?;
                     }
@@ -398,7 +129,7 @@ impl ParamsCmp {
             }
             _ => {
                 return Err(ParamsCmpError::ExtraOperand(
-                    p_gen.operands[4].to_string_lossy().to_string(),
+                    parser.operands[4].to_string_lossy().to_string(),
                 ));
             }
         }
@@ -543,8 +274,8 @@ impl ParamsCmp {
                 #[cfg(not(feature = "cmp_bytes_limit_128_bit"))]
                 {
                     match file_no {
-                        1 => self.ignore_initial_bytes_file_1 = Some(r),
-                        2 => self.ignore_initial_bytes_file_2 = Some(r),
+                        1 => self.ignore_initial_bytes_from = Some(r),
+                        2 => self.ignore_initial_bytes_to = Some(r),
                         _ => panic!("Logic error."),
                     }
                     Ok(r)
@@ -624,8 +355,8 @@ mod tests {
             res_ok(ParamsCmp {
                 // util: DiffUtility::Cmp,
                 util: DiffUtility::Cmp,
-                file_1: os("foo"),
-                file_2: os("bar"),
+                from: os("foo"),
+                to: os("bar"),
                 ..Default::default()
             }),
         );
@@ -635,8 +366,8 @@ mod tests {
             parse("cmp foo"),
             res_ok(ParamsCmp {
                 util: DiffUtility::Cmp,
-                file_1: os("foo"),
-                file_2: os("-"),
+                from: os("foo"),
+                to: os("-"),
                 ..Default::default()
             }),
         );
@@ -658,10 +389,10 @@ mod tests {
             parse("cmp foo bar 1"),
             res_ok(ParamsCmp {
                 util: DiffUtility::Cmp,
-                file_1: os("foo"),
-                file_2: os("bar"),
-                ignore_initial_bytes_file_1: Some(1),
-                ignore_initial_bytes_file_2: None,
+                from: os("foo"),
+                to: os("bar"),
+                ignore_initial_bytes_from: Some(1),
+                ignore_initial_bytes_to: None,
                 ..Default::default()
             }),
         );
@@ -737,8 +468,8 @@ mod tests {
         // --print-bytes
         let print_bytes = ParamsCmp {
             util: DiffUtility::Cmp,
-            file_1: os("foo"),
-            file_2: os("bar"),
+            from: os("foo"),
+            to: os("bar"),
             print_bytes: true,
             ..Default::default()
         };
@@ -752,8 +483,8 @@ mod tests {
         // --verbose
         let verbose = ParamsCmp {
             util: DiffUtility::Cmp,
-            file_1: os("foo"),
-            file_2: os("bar"),
+            from: os("foo"),
+            to: os("bar"),
             verbose: true,
             ..Default::default()
         };
@@ -782,8 +513,8 @@ mod tests {
         // --verbose & --print-bytes
         let verbose_and_print_bytes = ParamsCmp {
             util: DiffUtility::Cmp,
-            file_1: os("foo"),
-            file_2: os("bar"),
+            from: os("foo"),
+            to: os("bar"),
             print_bytes: true,
             verbose: true,
             ..Default::default()
@@ -812,8 +543,8 @@ mod tests {
         // --silent --quiet
         let silent = ParamsCmp {
             util: DiffUtility::Cmp,
-            file_1: os("foo"),
-            file_2: os("bar"),
+            from: os("foo"),
+            to: os("bar"),
             silent: true,
             ..Default::default()
         };
@@ -845,8 +576,8 @@ mod tests {
     fn bytes_limit() {
         let mut bytes_limit = ParamsCmp {
             util: DiffUtility::Cmp,
-            file_1: os("foo"),
-            file_2: os("bar"),
+            from: os("foo"),
+            to: os("bar"),
             bytes_limit: Some(1000),
             ..Default::default()
         };
@@ -961,10 +692,10 @@ mod tests {
     fn ignore_initial() {
         let mut skips = ParamsCmp {
             util: DiffUtility::Cmp,
-            file_1: os("foo"),
-            file_2: os("bar"),
-            ignore_initial_bytes_file_1: Some(1),
-            ignore_initial_bytes_file_2: Some(1),
+            from: os("foo"),
+            to: os("bar"),
+            ignore_initial_bytes_from: Some(1),
+            ignore_initial_bytes_to: Some(1),
             ..Default::default()
         };
         assert_eq!(parse("cmp -i 1 foo bar"), res_ok(skips.clone()));
@@ -975,7 +706,7 @@ mod tests {
         assert_eq!(parse("cmp --ig 1 foo bar"), res_ok(skips.clone()));
 
         // 2nd value different
-        skips.ignore_initial_bytes_file_2 = Some(2);
+        skips.ignore_initial_bytes_to = Some(2);
         assert_eq!(
             parse("cmp --ignore-initial=1:2 foo bar"),
             res_ok(skips.clone())
@@ -988,8 +719,8 @@ mod tests {
         );
 
         // large numbers
-        skips.ignore_initial_bytes_file_1 = Some(1_000_000_000);
-        skips.ignore_initial_bytes_file_2 = Some(2 * 1_152_921_504_606_846_976);
+        skips.ignore_initial_bytes_from = Some(1_000_000_000);
+        skips.ignore_initial_bytes_to = Some(2 * 1_152_921_504_606_846_976);
         assert_eq!(
             parse("cmp --ignore-initial=1GB:2E foo bar"),
             res_ok(skips.clone())
@@ -1080,10 +811,10 @@ mod tests {
                     parse(&format!("cmp -i 1{}:2 foo bar", suffixes[j])),
                     res_ok(ParamsCmp {
                         util: DiffUtility::Cmp,
-                        file_1: os("foo"),
-                        file_2: os("bar"),
-                        ignore_initial_bytes_file_1: Some(*v),
-                        ignore_initial_bytes_file_2: Some(2),
+                        from: os("foo"),
+                        to: os("bar"),
+                        ignore_initial_bytes_from: Some(*v),
+                        ignore_initial_bytes_to: Some(2),
                         ..Default::default()
                     }),
                 );

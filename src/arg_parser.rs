@@ -25,13 +25,11 @@ pub const OPT_HELP: AppOption = AppOption {
     long_name: "help",
     short: None,
     has_arg: false,
-    arg_default: None,
 };
 pub const OPT_VERSION: AppOption = AppOption {
     long_name: "version",
     short: Some('v'),
     has_arg: false,
-    arg_default: None,
 };
 
 /// This contains the args/options the app allows. They must be all of const value.
@@ -41,25 +39,8 @@ pub struct AppOption {
     pub long_name: &'static str,
     pub short: Option<char>,
     pub has_arg: bool,
-    pub arg_default: Option<&'static str>,
+    // pub arg_default: Option<&'static str>,
 }
-
-// #[derive(Debug)]
-// pub struct AppOptions(&'static [AppOption]);
-//
-// impl AppOptions {
-//     fn identify_options_from_partial_text(&self, opt: &str) -> Vec<&'static AppOption> {
-//         let l = opt.len();
-//         let v: Vec<&'static AppOption> = self
-//             .0
-//             .iter()
-//             .filter(|&it| it.long.len() >= l && &it.long[0..l] == opt)
-//             // .copied()
-//             .collect();
-//
-//         v
-//     }
-// }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParsedOption {
@@ -106,11 +87,7 @@ impl ParsedOption {
                     }
                 }
                 if self.arg_for_option.is_none() {
-                    if let Some(default) = self.app_option.arg_default {
-                        self.arg_for_option = Some(default.to_string())
-                    } else {
-                        return Err(ArgParserError::ArgForOptionMissing(self.clone()));
-                    }
+                    return Err(ArgParserError::ArgForOptionMissing(self.clone()));
                 }
             }
         } else {
@@ -145,7 +122,6 @@ impl Default for ParsedOption {
                 long_name: "dummy",
                 short: None,
                 has_arg: false,
-                arg_default: None,
             },
             arg_for_option: None,
             name_type_used: OptionNameTypeUsed::LongName,
@@ -250,13 +226,6 @@ impl Display for ArgParserError {
             ArgParserError::NoExecutable => {
                 write!(f, "Expected utility name as second argument, got nothing.")
             }
-            // TODO double dash
-            // sdiff options begin with ‘-’, so normally from-file and to-file may not begin with ‘-’.
-            // However, -- as an argument by itself treats the remaining arguments as file names even if they begin with ‘-’.
-            // You may not use - as an input file.
-            // ParamsGenParseError::IgnoreInitialDouble( op3, ig) => {
-            //     write_err(f,  &format!("option '--ignore-initial' ('-i') is set to {ig} but also values ares passed as operand '{op3}'"))
-            // }
             ArgParserError::InvalidOption(opt) => {
                 write!(f, "{}", &format!("invalid option '{opt}'"))
             }
@@ -306,6 +275,9 @@ impl ArgParser {
             options_parsed: Vec::new(),
             operands: Vec::new(),
         };
+        // sdiff options begin with ‘-’, so normally from-file and to-file may not begin with ‘-’.
+        // However, -- as an argument by itself treats the remaining arguments as file names even if they begin with ‘-’.
+        // You may not use - as an input file.
         // read next param as file name, here we generally use read as operand
         let mut is_double_dash = false;
 
@@ -494,6 +466,10 @@ impl ArgParser {
         Ok(arg_parser)
     }
 
+    pub fn add_copyright(text: &str) -> String {
+        format!("{text}\n{TEXT_COPYRIGHT}")
+    }
+
     pub fn identify_options_from_partial_text(
         app_options: &'static [AppOption],
         opt: &str,
@@ -672,6 +648,12 @@ pub enum DiffUtility {
 }
 
 impl DiffUtility {
+    /// Backward compatibility to old param.executable
+    #[allow(unused)]
+    pub fn executable(&self) -> OsString {
+        self.to_os_string()
+    }
+
     #[allow(unused)]
     pub fn to_os_string(self) -> OsString {
         OsString::from(self.to_string())
@@ -685,12 +667,11 @@ impl TryFrom<&OsString> for DiffUtility {
         match util_name.to_str() {
             Some("cmp") => Ok(DiffUtility::Cmp),
             Some("diff") => Ok(DiffUtility::Diff),
-            // Some("diff3") => Ok(DiffUtility::Diff3),
-            // Some("patch") => Ok(DiffUtility::Patch),
+            Some("diff3") => Ok(DiffUtility::Diff3),
+            // Some("diff3") => Err(DiffUtilityError::NotYetSupported("diff3".to_string())),
             Some("sdiff") => Ok(DiffUtility::SDiff),
-            Some("diff3") => Err(DiffUtilityError::NotYetSupported("diff3".to_string())),
+            // Some("patch") => Ok(DiffUtility::Patch),
             Some("patch") => Err(DiffUtilityError::NotYetSupported("patch".to_string())),
-            // Some("sdiff") => Err(DiffUtilityError::NotYetSupported("sdiff".to_string())),
             Some(name) => Err(DiffUtilityError::NameNotRecognized(name.to_string())),
             None => Err(DiffUtilityError::Nothing),
         }

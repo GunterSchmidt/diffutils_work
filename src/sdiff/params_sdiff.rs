@@ -9,58 +9,58 @@ use crate::{
 };
 
 /// Holds the given command line arguments except "--version" and "--help".
-#[derive(Debug, Default, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ParamsSdiff {
     /// Identifier
     pub util: DiffUtility,
     pub from: OsString,
     pub to: OsString,
     /// --diff-program=PROGRAM   use PROGRAM to compare files
-    diff_program: Option<String>,
+    pub diff_program: Option<String>,
     /// -t, --expand-tabs            expand tabs to spaces in output
-    expand_tabs: bool,
+    pub expand_tabs: bool,
     /// --help                   display this help and exit
-    help: bool,
+    pub help: bool,
     /// -W, --ignore-all-space       ignore all white space
-    ignore_all_space: bool,
+    pub ignore_all_space: bool,
     /// -B, --ignore-blank-lines     ignore changes whose lines are all blank
-    ignore_blank_lines: bool,
+    pub ignore_blank_lines: bool,
     /// -i, --ignore-case            consider upper- and lower-case to be the same
-    ignore_case: bool,
+    pub ignore_case: bool,
     /// -I, --ignore-matching-lines=REGEXP  ignore changes all whose lines match REGEXP
-    ignore_matching_lines: Option<String>,
+    pub ignore_matching_lines: Option<String>,
     /// -b, --ignore-space-change    ignore changes in the amount of white space
-    ignore_space_change: bool,
+    pub ignore_space_change: bool,
     /// -E, --ignore-tab-expansion   ignore changes due to tab expansion
-    ignore_tab_expansion: bool,
+    pub ignore_tab_expansion: bool,
     /// -Z, --ignore-trailing-space  ignore white space at line end
-    ignore_trailing_space: bool,
+    pub ignore_trailing_space: bool,
     /// -l, --left-column            output only the left column of common lines
-    left_column: bool,
+    pub left_column: bool,
     /// -d, --minimal                try hard to find a smaller set of changes
-    minimal: bool,
+    pub minimal: bool,
     /// -o, --output=FILE            operate interactively, sending output to FILE
-    output: Option<String>,
+    pub output: Option<String>,
     /// -H, --speed-large-files      assume large files, many scattered small changes
-    speed_large_files: bool,
+    pub speed_large_files: bool,
     /// --strip-trailing-cr      strip trailing carriage return on input
-    strip_trailing_cr: bool,
+    pub strip_trailing_cr: bool,
     /// -s, --suppress-common-lines  do not output common lines
-    suppress_common_lines: bool,
+    pub suppress_common_lines: bool,
     /// --tabsize=NUM            tab stops at every NUM (default 8) print columns
-    tabsize: Option<usize>,
+    pub tabsize: usize,
     /// -a, --text                   treat all files as text
-    text: bool,
+    pub text: bool,
     /// -v, --version                output version information and exit
-    version: bool,
+    pub version: bool,
     /// -w, --width=NUM              output at most NUM (default 130) print columns
-    width: Option<usize>,
+    pub width: usize,
 }
 
 impl ParamsSdiff {
     pub fn parse_params<I: Iterator<Item = OsString>>(opts: Peekable<I>) -> ResultParamsSdiffParse {
-        let p_gen = ArgParser::parse_params(&ARG_OPTIONS, opts)?;
-        Self::try_from(&p_gen)
+        let parser = ArgParser::parse_params(&APP_OPTIONS, opts)?;
+        Self::try_from(&parser)
     }
 
     fn try_from(parser: &ArgParser) -> ResultParamsSdiffParse {
@@ -75,7 +75,7 @@ impl ParamsSdiff {
             match *parsed_option.app_option {
                 OPT_DIFF_PROGRAM => params.diff_program = parsed_option.arg_for_option.clone(),
                 OPT_EXPAND_TABS => params.expand_tabs = true,
-                OPT_HELP => return Ok(ParamsSdiffOk::Info(ParamsSdiffInfo::Help)),
+                OPT_HELP => return Ok(ParamsSdiffOk::Info(ArgParser::add_copyright(TEXT_HELP))),
                 OPT_IGNORE_ALL_SPACE => params.ignore_all_space = true,
                 OPT_IGNORE_BLANK_LINES => params.ignore_blank_lines = true,
                 OPT_IGNORE_CASE => params.ignore_case = true,
@@ -95,7 +95,7 @@ impl ParamsSdiff {
                     params.set_tabsize(parsed_option)?;
                 }
                 OPT_TEXT => params.text = true,
-                OPT_VERSION => return Ok(ParamsSdiffOk::Info(ParamsSdiffInfo::Version)),
+                OPT_VERSION => return Ok(ParamsSdiffOk::Info(TEXT_VERSION.to_string())),
                 OPT_WIDTH => {
                     params.set_width(parsed_option)?;
                 }
@@ -147,7 +147,7 @@ impl ParamsSdiff {
             Ok(w) => w,
             Err(_) => return Err(ParamsSdiffError::InvalidNumber(parsed_option.clone())),
         };
-        self.tabsize = Some(t);
+        self.tabsize = t;
 
         Ok(t)
     }
@@ -158,9 +158,39 @@ impl ParamsSdiff {
             Ok(w) => w,
             Err(_) => return Err(ParamsSdiffError::InvalidNumber(parsed_option.clone())),
         };
-        self.width = Some(w);
+        self.width = w;
 
         Ok(w)
+    }
+}
+
+impl Default for ParamsSdiff {
+    fn default() -> Self {
+        Self {
+            util: DiffUtility::SDiff,
+            from: Default::default(),
+            to: Default::default(),
+            diff_program: Default::default(),
+            expand_tabs: Default::default(),
+            help: Default::default(),
+            ignore_all_space: Default::default(),
+            ignore_blank_lines: Default::default(),
+            ignore_case: Default::default(),
+            ignore_matching_lines: Default::default(),
+            ignore_space_change: Default::default(),
+            ignore_tab_expansion: Default::default(),
+            ignore_trailing_space: Default::default(),
+            left_column: Default::default(),
+            minimal: Default::default(),
+            output: Default::default(),
+            speed_large_files: Default::default(),
+            strip_trailing_cr: Default::default(),
+            suppress_common_lines: Default::default(),
+            tabsize: 8,
+            text: Default::default(),
+            version: Default::default(),
+            width: 130,
+        }
     }
 }
 
@@ -269,10 +299,10 @@ mod tests {
             speed_large_files: true,
             strip_trailing_cr: true,
             suppress_common_lines: true,
-            tabsize: Some(2),
+            tabsize: 2,
             text: true,
             version: false,
-            width: Some(150),
+            width: 150,
         };
         assert_eq!(
             parse(

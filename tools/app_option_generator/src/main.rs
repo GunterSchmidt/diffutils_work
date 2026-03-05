@@ -19,7 +19,7 @@ pub struct AppOption {
     pub long_name: String,
     pub short: Option<char>,
     pub has_arg: bool,
-    pub arg_default: Option<String>,
+    // pub arg_default: Option<String>,
     pub line: String,
 }
 
@@ -77,10 +77,12 @@ impl Display for AppOption {
         writeln!(f, "    long_name: \"{}\",", self.long_name)?;
         writeln!(f, "    short: {:?},", self.short)?;
         writeln!(f, "    has_arg: {},", self.has_arg)?;
-        writeln!(f, "    arg_default: {:?},", self.arg_default)?;
+        // writeln!(f, "    arg_default: {:?},", self.arg_default)?;
         write!(f, "}};")
     }
 }
+
+// TODO limit search -x to 15 chars
 
 fn main() {
     let mut args = std::env::args_os();
@@ -135,22 +137,22 @@ fn parse_to_app_options(lines: &[String]) -> String {
                         Some(p) => b + p,
                         None => line.len(),
                     };
-                    let mut long = match line[b + 2..e].split_once("=") {
+                    opt.long_name = match line[b + 2..e].split_once("=") {
                         Some((long_name, _arg)) => {
                             opt.has_arg = true;
                             long_name.trim().to_string()
                         }
                         None => line[b + 2..e].trim().to_string(),
                     };
-                    let has_default = long.find('[');
-                    opt.long_name = match has_default {
-                        Some(p) => {
-                            opt.arg_default = Some("<value>".to_string());
-                            _ = long.split_off(p);
-                            long
-                        }
-                        None => long,
-                    };
+                    // let has_default = long.find('[');
+                    // opt.long_name = match has_default {
+                    //     Some(p) => {
+                    //         opt.arg_default = Some("<value>".to_string());
+                    //         _ = long.split_off(p);
+                    //         long
+                    //     }
+                    //     None => long,
+                    // };
 
                     opt.option = opt.option_const_name();
                     println!("   Option: {opt}");
@@ -207,7 +209,11 @@ fn parse_to_app_options(lines: &[String]) -> String {
         content.push_str("    /// ");
         content.push_str(&opt.line.trim());
         content.push('\n');
-        let t = if opt.has_arg { "Option<Type>" } else { "bool" };
+        let t = if opt.has_arg {
+            "Option<String>"
+        } else {
+            "bool"
+        };
         let s = format!("    pub {}: {t},\n", opt.option_name_snake_case()); //.replace("-", "_"))
         content.push_str(&s);
         // content.push('\n');
@@ -215,12 +221,16 @@ fn parse_to_app_options(lines: &[String]) -> String {
     content.push_str("}\n");
 
     // create match for ArgParser output
+    //     impl ParamsCmp {
+    //     pub fn parse_params<I: Iterator<Item = OsString>>(opts: Peekable<I>) -> ResultParamsCmpParse {
+    //         let parser = ArgParser::parse_params(&APP_OPTIONS, opts)?;
+    //
+    //         Self::try_from(&parser)
+    //     }
+
     content.push_str("\n// match for ArgParser output\n");
     content.push_str("fn try_from(parser: &ArgParser) -> ResultParamsXxxParse {\n");
-    content.push_str("    let mut params = Self {\n");
-    content.push_str("        util: DiffUtility::XXX,\n");
-    content.push_str("        ..Default::default()\n");
-    content.push_str("    };\n");
+    content.push_str("    let mut params = Self::default();\n");
     content.push_str("    //  {\n");
     content.push_str("    //     // executable: parser.executable.clone(),\n");
     content.push_str("    //     ..Default::default()\n");
@@ -228,26 +238,32 @@ fn parse_to_app_options(lines: &[String]) -> String {
     content.push_str("\n");
     content.push_str("    // set options\n");
     content.push_str("    for parsed_option in &parser.options_parsed {\n");
-    content.push_str("    dbg!(parsed_option);\n");
-    content.push_str("    match *parsed_option.app_option {\n");
+    content.push_str("        dbg!(parsed_option);\n");
+    content.push_str("        match *parsed_option.app_option {\n");
     for opt in opts.iter() {
         let s = if opt.has_arg {
-            &format!("params.set_{}()?", opt.option_name_snake_case())
+            &format!(
+                "params.{} = parsed_option.arg_for_option.clone()",
+                opt.option_name_snake_case()
+            )
         } else if opt.long_name == "help" {
-            "return Ok(ParamsXxxOk::Info(ParamsXxxInfo::Help))"
+            "return Ok(ParamsXxxOk::Info(ArgParser::add_copyright(TEXT_HELP)))"
         } else if opt.long_name == "version" {
-            "return Ok(ParamsXxxOk::Info(ParamsXxxInfo::Version))"
+            "return Ok(ParamsXxxOk::Info(TEXT_VERSION.to_string()))"
         } else {
             &format!("params.{} = true", opt.option_name_snake_case())
         };
-        content.push_str(&format!("        {} => {s}, \n", opt.option));
+        content.push_str(&format!("            {} => {s}, \n", opt.option));
     }
     content.push_str(
-        "\n        // This is not an error, but a todo. Unfortunately an Enum is not possible.\n",
+        "\n            // This is not an error, but a todo. Unfortunately an Enum is not possible.\n",
     );
-    content
-        .push_str("        _ => todo!(\"Err Option: {}\", parsed_option.app_option.long_name),\n");
+    content.push_str(
+        "            _ => todo!(\"Err Option: {}\", parsed_option.app_option.long_name),\n",
+    );
+    content.push_str("        }\n");
     content.push_str("    }\n");
+    content.push_str("}\n");
     content.push_str("}\n");
 
     //     content.push_str("\n// From function for your parser\n");

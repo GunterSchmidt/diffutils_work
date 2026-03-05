@@ -1,10 +1,19 @@
 //! This module holds the core compare logic of sdiff.
-mod params_sdiff;
-mod params_sdiff_def;
+pub mod params_sdiff;
+pub mod params_sdiff_def;
 
-use std::{env::ArgsOs, fmt::Display, iter::Peekable, process::ExitCode};
+use std::{
+    env::ArgsOs,
+    fmt::Display,
+    io::{stdout, Write},
+    iter::Peekable,
+    process::ExitCode,
+};
 
-use crate::sdiff::{params_sdiff::ParamsSdiff, params_sdiff_def::ParamsSdiffOk};
+use crate::{
+    sdiff::{params_sdiff::ParamsSdiff, params_sdiff_def::ParamsSdiffOk},
+    side_diff, utils,
+};
 
 pub const EXE_NAME: &str = "sdiff";
 
@@ -16,7 +25,6 @@ pub const EXE_NAME: &str = "sdiff";
 /// Exit codes are documented at
 /// https://www.gnu.org/software/diffutils/manual/html_node/Invoking-sdiff.html \
 /// Exit status is 0 if inputs are identical, 1 if different, 2 in error case.
-// TODO first param util: DiffUtility,
 pub fn main(opts: Peekable<ArgsOs>) -> ExitCode {
     let params = match ParamsSdiff::parse_params(opts) {
         Ok(res) => match res {
@@ -39,8 +47,8 @@ pub fn main(opts: Peekable<ArgsOs>) -> ExitCode {
     }
 
     match sdiff(&params) {
-        Ok(SdiffOk::Equal) => ExitCode::SUCCESS,
-        Ok(SdiffOk::Different) => ExitCode::from(1),
+        Ok(CompareResultOk::Equal) => ExitCode::SUCCESS,
+        Ok(CompareResultOk::Different) => ExitCode::from(1),
         Err(e) => {
             // if !params.silent {
             eprintln!("{e}");
@@ -50,8 +58,8 @@ pub fn main(opts: Peekable<ArgsOs>) -> ExitCode {
     }
 }
 
-#[derive(Debug)]
-pub enum SdiffOk {
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CompareResultOk {
     Different,
     Equal,
 }
@@ -60,22 +68,55 @@ pub enum SdiffOk {
 /// To centralize error messages and make it easier to use in a lib.
 #[derive(Debug, PartialEq)]
 pub enum SdiffError {
-    // Dummy,
+    OutputError(String),
+    // (msg)
+    ReadFileError(String),
 }
 
 impl Display for SdiffError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // TODO Display errors
-        write!(f, "Error message of Sdiff")
+        match self {
+            SdiffError::OutputError(msg) => write!(f, "{msg}"),
+            SdiffError::ReadFileError(msg) => write!(f, "{msg}"),
+        }
     }
 }
 
 /// This is the main function to compare the files. \
 /// Files are limited to u64 bytes and u64 lines.
-pub fn sdiff(_params: &ParamsSdiff) -> Result<SdiffOk, SdiffError> {
-    // TODO sdiff file compare
-    // There seems to be a lot of similarity to diff, mainly a different output.
-    println!("\nsdiff does not compare files yet.");
-    println!("{:?} or {:?}?", SdiffOk::Different, SdiffOk::Equal);
-    Ok(SdiffOk::Equal)
+/// TODO sdiff is missing a number of options, currently implemented:
+/// * expand_tabs
+/// * tabsize
+/// * width
+pub fn sdiff(params: &ParamsSdiff) -> Result<CompareResultOk, SdiffError> {
+    let (from_content, to_content) = match utils::read_both_files(&params.from, &params.to) {
+        Ok(contents) => contents,
+        Err((filepath, error)) => {
+            let msg = utils::format_failure_to_read_input_file(
+                &params.util.executable(),
+                &filepath,
+                &error,
+            );
+            return Err(SdiffError::ReadFileError(msg));
+        }
+    };
+
+    // run diff
+    let mut output = stdout().lock();
+    let result = side_diff::diff(&from_content, &to_content, &mut output, &params.into());
+
+    match std::io::stdout().write_all(&result) {
+        Ok(_) => {
+            if result.is_empty() {
+                Ok(CompareResultOk::Equal)
+            } else {
+                Ok(CompareResultOk::Different)
+            }
+        }
+        Err(e) => Err(SdiffError::OutputError(e.to_string())),
+    }
+
+    // println!("\nsdiff does not compare files yet.");
+    // println!("{:?} or {:?}?", SdiffOk::Different, SdiffOk::Equal);
+    // Ok(SdiffOk::Equal)
 }

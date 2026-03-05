@@ -19,6 +19,7 @@ mod cmp;
 // mod cmp_org;
 mod context_diff;
 mod diff;
+mod diff3;
 mod ed_diff;
 mod macros;
 mod normal_diff;
@@ -80,7 +81,7 @@ fn main() -> ExitCode {
             DiffUtility::Cmp => cmp::main(args),
             DiffUtility::Diff => diff::main(args),
             // DiffUtility does not allow these, they return an error.
-            DiffUtility::Diff3 => todo!(),
+            DiffUtility::Diff3 => diff3::main(args),
             DiffUtility::Patch => todo!(),
             DiffUtility::SDiff => sdiff::main(args),
         },
