@@ -18,16 +18,13 @@ use std::{cmp, fs, io};
 
 pub const EXE_NAME: &str = "cmp";
 /// for --bytes, so really large number limits can be expressed, like 1Y.
-#[cfg(not(feature = "cmp_bytes_limit_128_bit"))]
-pub type Bytes = u64;
-#[cfg(feature = "cmp_bytes_limit_128_bit")]
-pub type Bytes = u128;
+pub type BytesLimitU64 = u64;
 // ignore initial is currently limited to u64, as take(skip) is used.
-pub type IgnInit = u64;
+pub type SkipU64 = u64;
 
 fn prepare_reader(
     path: &OsString,
-    skip: &Option<IgnInit>,
+    skip: &Option<SkipU64>,
     params: &ParamsCmp,
 ) -> Result<Box<dyn BufRead>, String> {
     let mut reader: Box<dyn BufRead> = if path == "-" {
@@ -71,7 +68,7 @@ pub fn cmp(params: &ParamsCmp) -> Result<Cmp, String> {
     let mut from = prepare_reader(&params.from, &params.ignore_initial_bytes_from, params)?;
     let mut to = prepare_reader(&params.to, &params.ignore_initial_bytes_to, params)?;
 
-    let mut offset_width = params.bytes_limit.unwrap_or(Bytes::MAX);
+    let mut offset_width = params.bytes_limit.unwrap_or(BytesLimitU64::MAX);
 
     if let (Ok(a_meta), Ok(b_meta)) = (fs::metadata(&params.from), fs::metadata(&params.to)) {
         #[cfg(not(target_os = "windows"))]
@@ -86,7 +83,7 @@ pub fn cmp(params: &ParamsCmp) -> Result<Cmp, String> {
             return Ok(Cmp::Different);
         }
 
-        let smaller = cmp::min(a_size, b_size) as Bytes;
+        let smaller = cmp::min(a_size, b_size) as BytesLimitU64;
         offset_width = cmp::min(smaller, offset_width);
     }
 
@@ -95,7 +92,7 @@ pub fn cmp(params: &ParamsCmp) -> Result<Cmp, String> {
     // Capacity calc: at_byte width + 2 x 3-byte octal numbers + 2 x 4-byte value + 4 spaces
     let mut output = Vec::<u8>::with_capacity(offset_width + 3 * 2 + 4 * 2 + 4);
 
-    let mut at_byte: Bytes = 1;
+    let mut at_byte: BytesLimitU64 = 1;
     let mut at_line: u64 = 1;
     let mut start_of_line = true;
     let mut stdout = BufWriter::new(io::stdout().lock());
@@ -151,7 +148,7 @@ pub fn cmp(params: &ParamsCmp) -> Result<Cmp, String> {
             // if let None = at_byte.checked_add(consumed as Bytes) {
             //     panic!("File larger than {} bytes.", Bytes::MAX);
             // };
-            at_byte += consumed as Bytes;
+            at_byte += consumed as BytesLimitU64;
             at_line += from_buf[..consumed].iter().filter(|&c| *c == b'\n').count() as u64;
 
             start_of_line = *last == b'\n';
@@ -225,7 +222,7 @@ pub fn cmp(params: &ParamsCmp) -> Result<Cmp, String> {
 //     An exit status of 0 means no differences were found,
 //     1 means some differences were found,
 //     and 2 means trouble.
-// TODO first param util: DiffUtility,
+// TODO first param util: Executable,
 pub fn main(opts: Peekable<ArgsOs>) -> ExitCode {
     // let params = match Params::parse_params(options) {
     //     Ok(res) => match res {
@@ -362,7 +359,7 @@ fn format_visible_byte(byte: u8) -> String {
 fn format_verbose_difference(
     from_byte: u8,
     to_byte: u8,
-    at_byte: Bytes,
+    at_byte: BytesLimitU64,
     offset_width: usize,
     output: &mut Vec<u8>,
     params: &ParamsCmp,
@@ -427,7 +424,13 @@ fn format_verbose_difference(
 }
 
 #[inline]
-fn report_eof(at_byte: Bytes, at_line: u64, start_of_line: bool, eof_on: &str, params: &ParamsCmp) {
+fn report_eof(
+    at_byte: BytesLimitU64,
+    at_line: u64,
+    start_of_line: bool,
+    eof_on: &str,
+    params: &ParamsCmp,
+) {
     if params.silent {
         return;
     }
@@ -475,7 +478,13 @@ fn is_posix_locale() -> bool {
 }
 
 #[inline]
-fn report_difference(from_byte: u8, to_byte: u8, at_byte: Bytes, at_line: u64, params: &ParamsCmp) {
+fn report_difference(
+    from_byte: u8,
+    to_byte: u8,
+    at_byte: BytesLimitU64,
+    at_line: u64,
+    params: &ParamsCmp,
+) {
     if params.silent {
         return;
     }

@@ -46,21 +46,19 @@ inherits = "release"
 lto = "thin"
 
 [features]
-default = ["bench_parser"]
-# default = ["allow_case_insensitive_byte_units", "cmp_bytes_limit_128_bit"]
-# allows to set the bytes limit from u64 to u128, if limits larger than Exabyte are required. 
-# This needs to be tested but is it feasible to compare such large files?
-cmp_bytes_limit_128_bit = []
+default = ["feat_bench_not_cmp"]
+# default = ["allow_case_insensitive_byte_units"]
 # instead of limiting to KiB, MiB, etc, one can write kib, mib, Mb or whatever case.
 allow_case_insensitive_byte_units = []
-bench_cmp = []
-bench_diff = []
-bench_parser = []
+# Turn bench for diffutils cmp off
+feat_bench_not_cmp = []
+# Turn bench for diffutils diff off
+feat_bench_not_diff = []
 
-[[bench]]
-name = "bench_divan"
-path = "benches/bench-diffutils.rs"
-harness = false
+# [[bench]]
+# name = "bench_divan"
+# path = "benches/bench-diffutils.rs"
+# harness = false
 
 # [[bench]]
 # name = "bench_criterion"

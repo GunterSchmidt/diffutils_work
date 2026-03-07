@@ -1,112 +1,112 @@
+// This file is part of the uutils diffutils package.
+//
+// For the full copyright and license information, please view the LICENSE-*
+// files that was distributed with this source code.
+
 //! This module holds all definitions, text and error messages for sdiff.
 use std::fmt::Display;
 
-use const_format::concatcp;
-
 use crate::{
-    arg_parser::{
-        AppOption, ArgParserError, ParsedOption, OPT_HELP, OPT_VERSION, TEXT_HELP_FOOTER,
-    },
-    sdiff::{params_sdiff::ParamsSdiff, EXE_NAME},
-    // sdiff::{Bytes, IgnInit, EXE_NAME},
+    arg_parser::{self, AppOption, Executable, ParseError, ParsedOption, OPT_HELP, OPT_VERSION},
+    sdiff::params_sdiff::ParamsSDiff,
 };
 
-pub type ResultParamsSdiffParse = Result<ParamsSdiffOk, ParamsSdiffError>;
+pub type ResultSdiffParse = Result<SDiffParseOk, ParseError>;
 
 // AppOptions for sdiff
-pub(super) const OPT_DIFF_PROGRAM: AppOption = AppOption {
+pub const OPT_DIFF_PROGRAM: AppOption = AppOption {
     long_name: "diff-program",
     short: None,
     has_arg: true,
 };
-pub(super) const OPT_EXPAND_TABS: AppOption = AppOption {
+pub const OPT_EXPAND_TABS: AppOption = AppOption {
     long_name: "expand-tabs",
     short: Some('t'),
     has_arg: false,
 };
-pub(super) const OPT_IGNORE_ALL_SPACE: AppOption = AppOption {
+pub const OPT_IGNORE_ALL_SPACE: AppOption = AppOption {
     long_name: "ignore-all-space",
     short: Some('W'),
     has_arg: false,
 };
-pub(super) const OPT_IGNORE_BLANK_LINES: AppOption = AppOption {
+pub const OPT_IGNORE_BLANK_LINES: AppOption = AppOption {
     long_name: "ignore-blank-lines",
     short: Some('B'),
     has_arg: false,
 };
-pub(super) const OPT_IGNORE_CASE: AppOption = AppOption {
+pub const OPT_IGNORE_CASE: AppOption = AppOption {
     long_name: "ignore-case",
     short: Some('i'),
     has_arg: false,
 };
-pub(super) const OPT_IGNORE_MATCHING_LINES: AppOption = AppOption {
+pub const OPT_IGNORE_MATCHING_LINES: AppOption = AppOption {
     long_name: "ignore-matching-lines",
     short: Some('I'),
     has_arg: true,
 };
-pub(super) const OPT_IGNORE_SPACE_CHANGE: AppOption = AppOption {
+pub const OPT_IGNORE_SPACE_CHANGE: AppOption = AppOption {
     long_name: "ignore-space-change",
     short: Some('b'),
     has_arg: false,
 };
-pub(super) const OPT_IGNORE_TAB_EXPANSION: AppOption = AppOption {
+pub const OPT_IGNORE_TAB_EXPANSION: AppOption = AppOption {
     long_name: "ignore-tab-expansion",
     short: Some('E'),
     has_arg: false,
 };
-pub(super) const OPT_IGNORE_TRAILING_SPACE: AppOption = AppOption {
+pub const OPT_IGNORE_TRAILING_SPACE: AppOption = AppOption {
     long_name: "ignore-trailing-space",
     short: Some('Z'),
     has_arg: false,
 };
-pub(super) const OPT_LEFT_COLUMN: AppOption = AppOption {
+pub const OPT_LEFT_COLUMN: AppOption = AppOption {
     long_name: "left-column",
     short: Some('l'),
     has_arg: false,
 };
-pub(super) const OPT_MINIMAL: AppOption = AppOption {
+pub const OPT_MINIMAL: AppOption = AppOption {
     long_name: "minimal",
     short: Some('d'),
     has_arg: false,
 };
-pub(super) const OPT_OUTPUT: AppOption = AppOption {
+pub const OPT_OUTPUT: AppOption = AppOption {
     long_name: "output",
     short: Some('o'),
     has_arg: true,
 };
-pub(super) const OPT_SPEED_LARGE_FILES: AppOption = AppOption {
+pub const OPT_SPEED_LARGE_FILES: AppOption = AppOption {
     long_name: "speed-large-files",
     short: Some('H'),
     has_arg: false,
 };
-pub(super) const OPT_STRIP_TRAILING_CR: AppOption = AppOption {
+pub const OPT_STRIP_TRAILING_CR: AppOption = AppOption {
     long_name: "strip-trailing-cr",
     short: None,
     has_arg: false,
 };
-pub(super) const OPT_SUPPRESS_COMMON_LINES: AppOption = AppOption {
+pub const OPT_SUPPRESS_COMMON_LINES: AppOption = AppOption {
     long_name: "suppress-common-lines",
     short: Some('s'),
     has_arg: false,
 };
-pub(super) const OPT_TABSIZE: AppOption = AppOption {
+pub const OPT_TABSIZE: AppOption = AppOption {
     long_name: "tabsize",
     short: None,
     has_arg: true,
 };
-pub(super) const OPT_TEXT: AppOption = AppOption {
+pub const OPT_TEXT: AppOption = AppOption {
     long_name: "text",
     short: Some('a'),
     has_arg: false,
 };
-pub(super) const OPT_WIDTH: AppOption = AppOption {
+pub const OPT_WIDTH: AppOption = AppOption {
     long_name: "width",
     short: Some('w'),
     has_arg: true,
 };
 
 // Array for ParamsGen
-pub(super) const APP_OPTIONS: [AppOption; 20] = [
+pub const ARG_OPTIONS: [AppOption; 20] = [
     OPT_DIFF_PROGRAM,
     OPT_EXPAND_TABS,
     OPT_HELP,
@@ -129,70 +129,53 @@ pub(super) const APP_OPTIONS: [AppOption; 20] = [
     OPT_WIDTH,
 ];
 
-// TODO Help text rewrite, this is copyrighted by GNU
-pub const TEXT_HELP: &str = concatcp!(
-    r#"
-Usage: sdiff [OPTION]... FILE1 FILE2
-sdiff is a tool which allows to compare two text files for differences.
-It outputs the differences in a side-by-side view.
-Use 'diff' for a row-by-row view.
-Use 'cmp' to compare binary files
-
-Options:
-  -o, --output=FILE            operate interactively, sending output to FILE
-
-  -i, --ignore-case            consider upper- and lower-case to be the same
-  -E, --ignore-tab-expansion   ignore changes due to tab expansion
-  -Z, --ignore-trailing-space  ignore white space at line end
-  -b, --ignore-space-change    ignore changes in the amount of white space
-  -W, --ignore-all-space       ignore all white space
-  -B, --ignore-blank-lines     ignore changes whose lines are all blank
-  -I, --ignore-matching-lines=RE  ignore changes all whose lines match RE
-      --strip-trailing-cr      strip trailing carriage return on input
-  -a, --text                   treat all files as text
-
-  -w, --width=NUM              output at most NUM (default 130) print columns
-  -l, --left-column            output only the left column of common lines
-  -s, --suppress-common-lines  do not output common lines
-
-  -t, --expand-tabs            expand tabs to spaces in output
-      --tabsize=NUM            tab stops at every NUM (default 8) print columns
-
-  -d, --minimal                try hard to find a smaller set of changes
-  -H, --speed-large-files      assume large files, many scattered small changes
-      --diff-program=PROGRAM   use PROGRAM to compare files
-
-      --help                   display this help and exit
-  -v, --version                output version information and exit
-
-If a FILE is '-', read operating system's standard input.
-Exit status is 0 if inputs are identical, 1 if different, 2 in error case.
-"#,
-    TEXT_HELP_FOOTER
-);
-
-// TODO Version text, possibly centralized.
-pub const TEXT_VERSION: &str = concat!("sdiff (Rust DiffUtils) ", env!("CARGO_PKG_VERSION"),);
-
 /// Success return type for parsing of params.
 ///
 /// Successful parsing will return ParamsSdiff, \
-/// '-- help' und '--version' will return an [ParamsSdiffInfo] enum, \
+/// '-- help' und '--version' will return the text as Enum value, \
 /// Error will be returned as [ParamsSdiffError] in the function Result.
 #[derive(Debug, PartialEq)]
-pub enum ParamsSdiffOk {
-    Info(String),
-    ParamsSdiff(ParamsSdiff),
+pub enum SDiffParseOk {
+    ParamsSdiff(ParamsSDiff),
+    Help,
+    Version,
+    // Info(String),
 }
 
 /// Contains all parser errors and their text messages.
 /// This allows centralized maintenance.
 #[derive(Debug, PartialEq)]
-pub enum ParamsSdiffError {
-    /// Bubbled up error
-    ArgParserError(ArgParserError),
+pub struct ParamsSdiffErrorCtx {
+    pub util: Executable,
+    pub error: SDiffParseError,
+}
 
-    /// number argument incorrect
+impl std::error::Error for ParamsSdiffErrorCtx {}
+
+// impl From<ArgParserErrorCtx> for ParamsSdiffErrorCtx {
+//     fn from(e: ArgParserErrorCtx) -> Self {
+//         Self {
+//             util: e.util.clone(),
+//             error: ParamsSdiffError::ArgParserError(e),
+//         }
+//     }
+// }
+
+impl Display for ParamsSdiffErrorCtx {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        arg_parser::write_err(f, &self.util, &self.error)
+    }
+}
+
+/// Contains all parser errors and their text messages.
+/// This allows centralized maintenance.
+#[derive(Debug, PartialEq)]
+pub enum SDiffParseError {
+    /// Bubbled up error
+    // ArgParserError(ArgParserErrorCtx),
+    ParserError(ParseError),
+
+    /// number for an option argument incorrect
     InvalidNumber(ParsedOption),
 
     // (param argument)
@@ -202,33 +185,34 @@ pub enum ParamsSdiffError {
     ExtraOperand(String),
 }
 
-impl From<ArgParserError> for ParamsSdiffError {
-    fn from(err: ArgParserError) -> Self {
-        Self::ArgParserError(err)
+impl std::error::Error for SDiffParseError {}
+
+// impl From<ArgParserErrorCtx> for ParamsSdiffError {
+//     fn from(err: ArgParserErrorCtx) -> Self {
+//         Self::ArgParserError(err)
+//     }
+// }
+impl From<ParseError> for SDiffParseError {
+    fn from(e: ParseError) -> Self {
+        Self::ParserError(e)
     }
 }
 
-impl Display for ParamsSdiffError {
+impl Display for SDiffParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Writes the error message, adds sdiff: and the --help information.
-        fn write_err(f: &mut std::fmt::Formatter<'_>, msg: &str) -> Result<(), std::fmt::Error> {
-            ArgParserError::write_err(f, EXE_NAME, msg)
-        }
-
-        // TODO Different error messages for Short and Long name calls? Generally error messages do not attempt to be GNU compatible.
-        match self {
-            ParamsSdiffError::ArgParserError(e) => write_err(f, &e.to_string()),
-            ParamsSdiffError::ExtraOperand(opt) => write_err(f, &format!("extra operand '{opt}'")),
-            ParamsSdiffError::InvalidNumber(opt) => write_err(
-                f,
-                &format!(
-                    "invalid argument '{}' for '--{}'{}",
-                    opt.arg_for_option_or_empty_string(),
-                    opt.app_option.long_name,
-                    opt.short_char_or_empty_string(),
-                ),
+        // Generally error messages do not attempt to be GNU compatible.
+        let msg = match self {
+            // ParamsSdiffError::ArgParserError(e) => &e.to_string(),
+            SDiffParseError::ParserError(e) => &e.to_string(),
+            SDiffParseError::ExtraOperand(opt) => &format!("extra operand '{opt}'"),
+            SDiffParseError::InvalidNumber(opt) => &format!(
+                "invalid argument '{}' for '--{}'{}",
+                opt.arg_for_option_or_empty_string(),
+                opt.app_option.long_name,
+                opt.short_char_or_empty_string(),
             ),
             // ParamsSdiffError::WidthInvalid(param) => write_err(f, &format!("invalid '{param}'")),
-        }
+        };
+        write!(f, "{msg}")
     }
 }

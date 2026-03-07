@@ -2,10 +2,10 @@ use std::{ffi::OsString, iter::Peekable};
 
 use crate::{
     arg_parser::{
-        ArgParser, ArgParserError, DiffUtility, OptionNameTypeUsed, ParsedOption, OPT_HELP,
+        ArgParser, ArgParserError, Executable, OptionNameTypeUsed, ParsedOption, OPT_HELP,
         OPT_VERSION,
     },
-    cmp::{params_cmp_def::*, Bytes, IgnInit},
+    cmp::{params_cmp_def::*, BytesLimitU64, SkipU64},
 };
 
 pub type ResultParamsCmpParse = Result<ParamsCmpOk, ParamsCmpError>;
@@ -14,21 +14,23 @@ pub type ResultParamsCmpParse = Result<ParamsCmpOk, ParamsCmpError>;
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ParamsCmp {
     /// Identifier
-    pub util: DiffUtility,
+    pub util: Executable,
     // pub executable: OsString,
     pub from: OsString,
     pub to: OsString,
     /// -n, --bytes=LIMIT          compare at most LIMIT bytes
     /// cmp from diffutils has a limit of i64::MAX (9_223_372_036_854_775_807)
     /// If None limit will be set to Bytes::MAX.
-    pub bytes_limit: Option<Bytes>,
+    pub bytes_limit: Option<BytesLimitU64>,
     // /// --help                     display this help and exit
     // pub help: bool,
     /// -i, --ignore-initial=SKIP         skip first SKIP bytes of both inputs
     /// If None will be set to 0.
-    pub ignore_initial_bytes_from: Option<IgnInit>,
+    // TODO remove option, replace with 0
+    // TODO replace skip with ign_init, rename back to skip
+    pub ignore_initial_bytes_from: Option<SkipU64>,
     /// -i, --ignore-initial=SKIP1:SKIP2  skip first SKIP1 bytes of FILE1 and
-    pub ignore_initial_bytes_to: Option<IgnInit>,
+    pub ignore_initial_bytes_to: Option<SkipU64>,
     /// -b, --print-bytes          print differing bytes
     pub print_bytes: bool,
     /// -s, --quiet, --silent      suppress all normal output \
@@ -44,7 +46,7 @@ pub struct ParamsCmp {
 impl Default for ParamsCmp {
     fn default() -> Self {
         Self {
-            util: DiffUtility::Cmp,
+            util: Executable::Cmp,
             // executable: Default::default(),
             from: Default::default(),
             to: Default::default(),
@@ -153,7 +155,7 @@ impl ParamsCmp {
     pub fn set_bytes_limit(
         &mut self,
         parsed_option: &ParsedOption,
-    ) -> Result<Bytes, ParamsCmpError> {
+    ) -> Result<BytesLimitU64, ParamsCmpError> {
         match ArgParser::parse_bytes(parsed_option.arg_for_option.as_ref().expect("Logic error")) {
             Ok(r) => {
                 self.bytes_limit = Some(r);
@@ -226,7 +228,7 @@ impl ParamsCmp {
     pub fn set_skip_bytes_file_1(
         &mut self,
         parsed_option: &ParsedOption,
-    ) -> Result<IgnInit, ParamsCmpError> {
+    ) -> Result<SkipU64, ParamsCmpError> {
         self.set_skip_bytes_file_no(parsed_option, 1)
     }
 
@@ -236,7 +238,7 @@ impl ParamsCmp {
     pub fn set_skip_bytes_file_2(
         &mut self,
         parsed_option: &ParsedOption,
-    ) -> Result<IgnInit, ParamsCmpError> {
+    ) -> Result<SkipU64, ParamsCmpError> {
         self.set_skip_bytes_file_no(parsed_option, 2)
     }
 
@@ -250,7 +252,7 @@ impl ParamsCmp {
         &mut self,
         parsed_option: &ParsedOption,
         file_no: i32,
-    ) -> Result<IgnInit, ParamsCmpError> {
+    ) -> Result<SkipU64, ParamsCmpError> {
         match ArgParser::parse_bytes(
             parsed_option
                 .arg_for_option
@@ -258,28 +260,12 @@ impl ParamsCmp {
                 .expect("Logic error, must have value."),
         ) {
             Ok(r) => {
-                #[cfg(feature = "cmp_bytes_limit_128_bit")]
-                {
-                    if r > IgnInit::MAX as u128 {
-                        return Err(ParamsCmpError::BytesPosOverflow(parsed_option.clone()));
-                    }
-                    let r = r as IgnInit;
-                    match file_no {
-                        1 => self.ignore_initial_bytes_file_1 = Some(r),
-                        2 => self.ignore_initial_bytes_file_2 = Some(r),
-                        _ => panic!("Logic error."),
-                    }
-                    Ok(r)
+                match file_no {
+                    1 => self.ignore_initial_bytes_from = Some(r),
+                    2 => self.ignore_initial_bytes_to = Some(r),
+                    _ => panic!("Logic error."),
                 }
-                #[cfg(not(feature = "cmp_bytes_limit_128_bit"))]
-                {
-                    match file_no {
-                        1 => self.ignore_initial_bytes_from = Some(r),
-                        2 => self.ignore_initial_bytes_to = Some(r),
-                        _ => panic!("Logic error."),
-                    }
-                    Ok(r)
-                }
+                Ok(r)
             }
             Err(e) => Err(ParamsCmpError::from_parse_byte_error(e, parsed_option)),
         }
@@ -353,8 +339,8 @@ mod tests {
         assert_eq!(
             parse("cmp foo bar"),
             res_ok(ParamsCmp {
-                // util: DiffUtility::Cmp,
-                util: DiffUtility::Cmp,
+                // util: Executable::Cmp,
+                util: Executable::Cmp,
                 from: os("foo"),
                 to: os("bar"),
                 ..Default::default()
@@ -365,7 +351,7 @@ mod tests {
         assert_eq!(
             parse("cmp foo"),
             res_ok(ParamsCmp {
-                util: DiffUtility::Cmp,
+                util: Executable::Cmp,
                 from: os("foo"),
                 to: os("-"),
                 ..Default::default()
@@ -373,22 +359,21 @@ mod tests {
         );
 
         // double dash without operand
-        // Test fails as this behavior is not replicated.
-        // assert_eq!(
-        //     parse_params("cmp foo -- --help"),
-        //     res_ok(ParamsCmp {
-        //         util: DiffUtility::Cmp,
-        //         file_1: os("foo"),
-        //         file_2: os("--help"),
-        //         ..Default::default()
-        //     }),
-        // );
+        assert_eq!(
+            parse("sdiff foo -- --help"),
+            res_ok(ParamsCmp {
+                util: DiffUtilExe::SDiff,
+                from: os("foo"),
+                to: os("--help"),
+                ..Default::default()
+            }),
+        );
 
         // --ignore-initial for file_1 as operand
         assert_eq!(
             parse("cmp foo bar 1"),
             res_ok(ParamsCmp {
-                util: DiffUtility::Cmp,
+                util: Executable::Cmp,
                 from: os("foo"),
                 to: os("bar"),
                 ignore_initial_bytes_from: Some(1),
@@ -402,7 +387,7 @@ mod tests {
         // assert_eq!(
         //     parse_params("cmp foo bar 1 2Y"),
         //     res_ok(ParamsCmp {
-        //         util: DiffUtility::Cmp,
+        //         util: Executable::Cmp,
         //         file_1: os("foo"),
         //         file_2: os("bar"),
         //         skip_bytes_file_1: Some(1),
@@ -411,43 +396,16 @@ mod tests {
         //     }),
         // );
 
-        #[cfg(feature = "cmp_bytes_limit_128_bit")]
-        {
-            // Ok 128-Bit: --ignore-initial as operands with 1 2Y (which is greater than u64)
-            let bytes_limit = ParamsCmp {
-                util: DiffUtility::Cmp,
-                file_1: os("foo"),
-                file_2: os("bar"),
-                bytes_limit: Some(2 * 1_208_925_819_614_629_174_706_176),
-                ..Default::default()
-            };
-            assert_eq!(parse("cmp foo bar --bytes=2Y"), res_ok(bytes_limit));
-        }
+        // Failure: --ignore-initial as operands with 1 2Y (which is greater than u64)
+        assert_eq!(
+            parse("cmp foo bar 1 2Y"),
+            Err(ParamsCmpError::BytesInvalidUnit(ParsedOption {
+                app_option: &OPT_IGNORE_INITIAL,
+                arg_for_option: Some("2Y".to_string()),
+                name_type_used: OptionNameTypeUsed::LongName
+            })),
+        );
 
-        #[cfg(feature = "cmp_bytes_limit_128_bit")]
-        {
-            // Failure: --ignore-initial as operands with 1 2Y (which is greater than u64)
-            assert_eq!(
-                parse("cmp foo bar 1 2Y"),
-                Err(ParamsCmpError::BytesPosOverflow(ParsedOption {
-                    app_option: &OPT_IGNORE_INITIAL,
-                    arg_for_option: Some("2Y".to_string()),
-                    name_type_used: OptionNameTypeUsed::LongName
-                })),
-            );
-        }
-        #[cfg(not(feature = "cmp_bytes_limit_128_bit"))]
-        {
-            // Failure: --ignore-initial as operands with 1 2Y (which is greater than u64)
-            assert_eq!(
-                parse("cmp foo bar 1 2Y"),
-                Err(ParamsCmpError::BytesInvalidUnit(ParsedOption {
-                    app_option: &OPT_IGNORE_INITIAL,
-                    arg_for_option: Some("2Y".to_string()),
-                    name_type_used: OptionNameTypeUsed::LongName
-                })),
-            );
-        }
         // Err: too many operands
         assert_eq!(
             parse("cmp foo bar 1 2 3"),
@@ -458,7 +416,7 @@ mod tests {
         assert_eq!(
             parse("cmp"),
             Err(ParamsCmpError::ArgParserError(ArgParserError::NoOperand(
-                DiffUtility::Cmp
+                Executable::Cmp
             )))
         );
     }
@@ -467,7 +425,7 @@ mod tests {
     fn execution_modes() {
         // --print-bytes
         let print_bytes = ParamsCmp {
-            util: DiffUtility::Cmp,
+            util: Executable::Cmp,
             from: os("foo"),
             to: os("bar"),
             print_bytes: true,
@@ -482,7 +440,7 @@ mod tests {
 
         // --verbose
         let verbose = ParamsCmp {
-            util: DiffUtility::Cmp,
+            util: Executable::Cmp,
             from: os("foo"),
             to: os("bar"),
             verbose: true,
@@ -512,7 +470,7 @@ mod tests {
 
         // --verbose & --print-bytes
         let verbose_and_print_bytes = ParamsCmp {
-            util: DiffUtility::Cmp,
+            util: Executable::Cmp,
             from: os("foo"),
             to: os("bar"),
             print_bytes: true,
@@ -542,7 +500,7 @@ mod tests {
 
         // --silent --quiet
         let silent = ParamsCmp {
-            util: DiffUtility::Cmp,
+            util: Executable::Cmp,
             from: os("foo"),
             to: os("bar"),
             silent: true,
@@ -575,7 +533,7 @@ mod tests {
     /// - cmp file_1 file_2 -bln1kiB
     fn bytes_limit() {
         let mut bytes_limit = ParamsCmp {
-            util: DiffUtility::Cmp,
+            util: Executable::Cmp,
             from: os("foo"),
             to: os("bar"),
             bytes_limit: Some(1000),
@@ -652,30 +610,21 @@ mod tests {
         assert_eq!(parse("cmp -n 1EiB foo bar"), res_ok(bytes_limit.clone()));
 
         // Failure cases
-        #[cfg(feature = "cmp_bytes_limit_128_bit")]
-        {
-            bytes_limit.bytes_limit = Some(1_000_000_000_000_000_000_000);
-            assert_eq!(parse("cmp -n 1ZB foo bar"), res_ok(bytes_limit.clone()));
-        }
-
-        #[cfg(not(feature = "cmp_bytes_limit_128_bit"))]
-        {
-            assert_eq!(
-                parse("cmp -n 1ZB foo bar"),
-                Err(ParamsCmpError::BytesInvalidUnit(ParsedOption::new(
-                    &OPT_BYTES_LIMIT,
-                    "1ZB".to_string(),
-                    OptionNameTypeUsed::ShortName
-                )))
-            );
-            let r = parse("cmp -n 1ZB foo bar");
-            match r {
-                Ok(_) => assert!(false, "Should not be Ok."),
-                Err(e) => assert_eq!(
-                    e.to_string(),
-                    format!("cmp: invalid '--bytes' value '1ZB'\ncmp: {TEXT_HELP_HINT}")
-                ),
-            }
+        assert_eq!(
+            parse("cmp -n 1ZB foo bar"),
+            Err(ParamsCmpError::BytesInvalidUnit(ParsedOption::new(
+                &OPT_BYTES_LIMIT,
+                "1ZB".to_string(),
+                OptionNameTypeUsed::ShortName
+            )))
+        );
+        let r = parse("cmp -n 1ZB foo bar");
+        match r {
+            Ok(_) => assert!(false, "Should not be Ok."),
+            Err(e) => assert_eq!(
+                e.to_string(),
+                format!("cmp: invalid '--bytes' value '1ZB'\ncmp: {TEXT_HELP_HINT}")
+            ),
         }
 
         assert_eq!(
@@ -691,7 +640,7 @@ mod tests {
     #[test]
     fn ignore_initial() {
         let mut skips = ParamsCmp {
-            util: DiffUtility::Cmp,
+            util: Executable::Cmp,
             from: os("foo"),
             to: os("bar"),
             ignore_initial_bytes_from: Some(1),
@@ -799,10 +748,10 @@ mod tests {
         .enumerate()
         {
             let values = [
-                (1_000 as IgnInit)
+                (1_000 as SkipU64)
                     .checked_pow((i + 1) as u32)
                     .expect(&format!("number too large for suffix {:?}", suffixes)),
-                (1024 as IgnInit)
+                (1024 as SkipU64)
                     .checked_pow((i + 1) as u32)
                     .expect(&format!("number too large for suffix {:?}", suffixes)),
             ];
@@ -810,7 +759,7 @@ mod tests {
                 assert_eq!(
                     parse(&format!("cmp -i 1{}:2 foo bar", suffixes[j])),
                     res_ok(ParamsCmp {
-                        util: DiffUtility::Cmp,
+                        util: Executable::Cmp,
                         from: os("foo"),
                         to: os("bar"),
                         ignore_initial_bytes_from: Some(*v),

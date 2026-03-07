@@ -8,7 +8,7 @@ use diff::Result;
 use std::{io::Write, vec};
 use unicode_width::UnicodeWidthStr;
 
-use crate::sdiff::params_sdiff::ParamsSdiff;
+use crate::sdiff::params_sdiff::ParamsSDiff;
 
 const GUTTER_WIDTH_MIN: usize = 3;
 
@@ -116,8 +116,8 @@ impl From<&crate::params::Params> for Params {
     }
 }
 
-impl From<&ParamsSdiff> for Params {
-    fn from(param: &ParamsSdiff) -> Self {
+impl From<&ParamsSDiff> for Params {
+    fn from(param: &ParamsSDiff) -> Self {
         Self {
             expand_tabs: param.expand_tabs,
             tabsize: param.tabsize,

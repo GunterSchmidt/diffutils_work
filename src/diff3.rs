@@ -7,21 +7,11 @@
 pub mod params_diff3;
 pub mod params_diff3_def;
 
-use std::{
-    env::ArgsOs,
-    fmt::Display,
-    io::{stdout, Write},
-    iter::Peekable,
-    process::ExitCode,
-};
+use std::{env::ArgsOs, iter::Peekable, process::ExitCode};
 
-use crate::{
-    diff3::{
-        params_diff3::ParamsDiff3,
-        params_diff3_def::{ParamsDiff3Error, ParamsDiff3Ok},
-    },
-    sdiff::CompareResultOk,
-    side_diff, utils,
+use crate::diff3::{
+    params_diff3::ParamsDiff3,
+    params_diff3_def::{ParamsDiff3Error, ParamsDiff3Ok},
 };
 
 pub const EXE_NAME: &str = "diff3";
@@ -66,6 +56,12 @@ pub fn main(opts: Peekable<ArgsOs>) -> ExitCode {
             ExitCode::from(2)
         }
     }
+}
+
+#[derive(Debug)]
+pub enum CompareResultOk {
+    Different,
+    Equal,
 }
 
 fn diff3(params: &ParamsDiff3) -> Result<CompareResultOk, ParamsDiff3Error> {

@@ -4,7 +4,7 @@ use std::fmt::Display;
 
 use crate::{
     arg_parser::{AppOption, ArgParserError, OPT_HELP, OPT_VERSION},
-    diff3::{params_diff3::ParamsDiff3, EXE_NAME},
+    diff3::params_diff3::ParamsDiff3,
 };
 
 // TODO Help text
@@ -19,7 +19,7 @@ pub const TEXT_VERSION: &str = concat!("diff3 (Rust DiffUtils) ", env!("CARGO_PK
 //   -A, --show-all              output all changes, bracketing conflicts
 //   -e, --ed                    output ed script incorporating changes
 //   -E, --show-overlap          like -e, but bracket conflicts
-//   -3, --easy-only             like -e, but incorporate only nonoverlapping changes
+//   -3, --easy-only             like -e, but incorporate only non-overlapping changes
 //   -x, --overlap-only          like -e, but incorporate only overlapping changes
 //   -X                          like -x, but bracket conflicts
 // long-name for-X: bracket-conflicts
@@ -148,16 +148,22 @@ impl From<ArgParserError> for ParamsDiff3Error {
 
 impl Display for ParamsDiff3Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Writes the error message, adds cmp: and the --help information.
-        fn write_err(f: &mut std::fmt::Formatter<'_>, msg: &str) -> Result<(), std::fmt::Error> {
-            ArgParserError::write_err(f, EXE_NAME, msg)
-        }
-
-        // TODO Short and Long name errors
-        match self {
-            ParamsDiff3Error::ArgParserError(e) => write_err(f, &e.to_string()),
-
-            ParamsDiff3Error::ExtraOperand(opt) => write_err(f, &format!("extra operand '{opt}'")),
-        }
+        // Generally error messages do not attempt to be GNU compatible.
+        let msg = match self {
+            ParamsDiff3Error::ArgParserError(e) => &e.to_string(),
+            ParamsDiff3Error::ExtraOperand(opt) => &format!("extra operand '{opt}'"),
+        };
+        write!(f, "{msg}")
+        //  // Writes the error message, adds cmp: and the --help information.
+        //         fn write_err(f: &mut std::fmt::Formatter<'_>, msg: &str) -> Result<(), std::fmt::Error> {
+        //             arg_parser::write_err(f, EXE_NAME, msg)
+        //         }
+        //
+        //         // TODO Short and Long name errors
+        //         match self {
+        //             ParamsDiff3Error::ArgParserError(e) => write_err(f, &e.to_string()),
+        //
+        //             ParamsDiff3Error::ExtraOperand(opt) => write_err(f, &format!("extra operand '{opt}'")),
+        //         }
     }
 }

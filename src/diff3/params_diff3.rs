@@ -1,7 +1,7 @@
 use std::{ffi::OsString, iter::Peekable};
 
 use crate::{
-    arg_parser::{ArgParser, ArgParserError, DiffUtility, OPT_HELP, OPT_VERSION},
+    arg_parser::{self, ArgParser, ArgParserError, Executable, OPT_HELP, OPT_VERSION},
     diff3::params_diff3_def::*,
 };
 
@@ -11,8 +11,7 @@ pub type ResultParamsDiff3Parse = Result<ParamsDiff3Ok, ParamsDiff3Error>;
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ParamsDiff3 {
     /// Identifier
-    pub util: DiffUtility,
-    // pub executable: OsString,
+    pub executable: Executable,
     pub from: OsString,
     pub to: OsString,
     //  -i                          append 'w' and 'q' commands to ed scripts
@@ -21,7 +20,7 @@ pub struct ParamsDiff3 {
     pub bracket_conflicts: bool,
     /// --diff-program=PROGRAM  use PROGRAM to compare files
     pub diff_program: Option<String>,
-    /// -3, --easy-only             like -e, but incorporate only nonoverlapping changes
+    /// -3, --easy-only             like -e, but incorporate only non-overlapping changes
     pub easy_only: bool,
     /// -e, --ed                    output ed script incorporating changes
     pub ed: bool,
@@ -47,11 +46,12 @@ pub struct ParamsDiff3 {
     pub version: bool,
 }
 
+// TODO default
 // TODO rustanalyzer issue: no entry or missing entry: create defaults
 impl Default for ParamsDiff3 {
     fn default() -> Self {
         Self {
-            util: DiffUtility::Diff3,
+            executable: Executable::Diff3,
             from: Default::default(),
             to: Default::default(),
             append_wq_to_ed: Default::default(),
@@ -97,7 +97,7 @@ impl ParamsDiff3 {
                 OPT_BRACKET_CONFLICTS => params.bracket_conflicts = true,
                 OPT_EASY_ONLY => params.easy_only = true,
                 OPT_ED => params.ed = true,
-                OPT_HELP => return Ok(ParamsDiff3Ok::Info(ArgParser::add_copyright(TEXT_HELP))),
+                OPT_HELP => return Ok(ParamsDiff3Ok::Info(arg_parser::add_copyright(TEXT_HELP))),
                 OPT_INITIAL_TAB => params.initial_tab = true,
                 OPT_LABEL => params.label = parsed_option.arg_for_option.clone(),
                 OPT_MERGE => params.merge = true,
@@ -117,7 +117,7 @@ impl ParamsDiff3 {
         match parser.operands.len() {
             0 => {
                 return Err(ParamsDiff3Error::ArgParserError(ArgParserError::NoOperand(
-                    params.util,
+                    params.executable,
                 )))
             }
             // If only file_1 is set, then file_2 defaults to '-', so it reads from StandardInput.

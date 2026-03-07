@@ -1,18 +1,158 @@
+// This file is part of the uutils diffutils package.
+//
+// For the full copyright and license information, please view the LICENSE-*
+// files that was distributed with this source code.
+
 //! This module contains the Parser for sdiff arguments.
 //!
 //! All option definitions, output texts and the Error handling is in [super::params_sdiff_def].
 use std::{ffi::OsString, iter::Peekable};
 
-use crate::{
-    arg_parser::{ArgParser, ArgParserError, DiffUtility, ParsedOption, OPT_HELP, OPT_VERSION},
-    sdiff::params_sdiff_def::*,
+use crate::arg_parser::{
+    AppOption, Executable, ParseError, ParsedOption, Parser, OPT_HELP, OPT_VERSION,
 };
+
+// use crate::{
+//     arg_parser::{self, AppOption, Executable, ParseError, ParsedOption, OPT_HELP, OPT_VERSION},
+//     sdiff::params_sdiff::ParamsSDiff,
+// };
+
+pub type ResultSdiffParse = Result<SDiffParseOk, ParseError>;
+
+// AppOptions for sdiff
+pub const OPT_DIFF_PROGRAM: AppOption = AppOption {
+    long_name: "diff-program",
+    short: None,
+    has_arg: true,
+};
+pub const OPT_EXPAND_TABS: AppOption = AppOption {
+    long_name: "expand-tabs",
+    short: Some('t'),
+    has_arg: false,
+};
+pub const OPT_IGNORE_ALL_SPACE: AppOption = AppOption {
+    long_name: "ignore-all-space",
+    short: Some('W'),
+    has_arg: false,
+};
+pub const OPT_IGNORE_BLANK_LINES: AppOption = AppOption {
+    long_name: "ignore-blank-lines",
+    short: Some('B'),
+    has_arg: false,
+};
+pub const OPT_IGNORE_CASE: AppOption = AppOption {
+    long_name: "ignore-case",
+    short: Some('i'),
+    has_arg: false,
+};
+pub const OPT_IGNORE_MATCHING_LINES: AppOption = AppOption {
+    long_name: "ignore-matching-lines",
+    short: Some('I'),
+    has_arg: true,
+};
+pub const OPT_IGNORE_SPACE_CHANGE: AppOption = AppOption {
+    long_name: "ignore-space-change",
+    short: Some('b'),
+    has_arg: false,
+};
+pub const OPT_IGNORE_TAB_EXPANSION: AppOption = AppOption {
+    long_name: "ignore-tab-expansion",
+    short: Some('E'),
+    has_arg: false,
+};
+pub const OPT_IGNORE_TRAILING_SPACE: AppOption = AppOption {
+    long_name: "ignore-trailing-space",
+    short: Some('Z'),
+    has_arg: false,
+};
+pub const OPT_LEFT_COLUMN: AppOption = AppOption {
+    long_name: "left-column",
+    short: Some('l'),
+    has_arg: false,
+};
+pub const OPT_MINIMAL: AppOption = AppOption {
+    long_name: "minimal",
+    short: Some('d'),
+    has_arg: false,
+};
+pub const OPT_OUTPUT: AppOption = AppOption {
+    long_name: "output",
+    short: Some('o'),
+    has_arg: true,
+};
+pub const OPT_SPEED_LARGE_FILES: AppOption = AppOption {
+    long_name: "speed-large-files",
+    short: Some('H'),
+    has_arg: false,
+};
+pub const OPT_STRIP_TRAILING_CR: AppOption = AppOption {
+    long_name: "strip-trailing-cr",
+    short: None,
+    has_arg: false,
+};
+pub const OPT_SUPPRESS_COMMON_LINES: AppOption = AppOption {
+    long_name: "suppress-common-lines",
+    short: Some('s'),
+    has_arg: false,
+};
+pub const OPT_TABSIZE: AppOption = AppOption {
+    long_name: "tabsize",
+    short: None,
+    has_arg: true,
+};
+pub const OPT_TEXT: AppOption = AppOption {
+    long_name: "text",
+    short: Some('a'),
+    has_arg: false,
+};
+pub const OPT_WIDTH: AppOption = AppOption {
+    long_name: "width",
+    short: Some('w'),
+    has_arg: true,
+};
+
+// Array for ParamsGen
+pub const ARG_OPTIONS: [AppOption; 20] = [
+    OPT_DIFF_PROGRAM,
+    OPT_EXPAND_TABS,
+    OPT_HELP,
+    OPT_IGNORE_ALL_SPACE,
+    OPT_IGNORE_BLANK_LINES,
+    OPT_IGNORE_CASE,
+    OPT_IGNORE_MATCHING_LINES,
+    OPT_IGNORE_SPACE_CHANGE,
+    OPT_IGNORE_TAB_EXPANSION,
+    OPT_IGNORE_TRAILING_SPACE,
+    OPT_LEFT_COLUMN,
+    OPT_MINIMAL,
+    OPT_OUTPUT,
+    OPT_SPEED_LARGE_FILES,
+    OPT_STRIP_TRAILING_CR,
+    OPT_SUPPRESS_COMMON_LINES,
+    OPT_TABSIZE,
+    OPT_TEXT,
+    OPT_VERSION,
+    OPT_WIDTH,
+];
+
+/// Success return type for parsing of params.
+///
+/// Successful parsing will return ParamsSdiff, \
+/// '-- help' und '--version' will return the text as Enum value, \
+/// Error will be returned as [ParamsSdiffError] in the function Result.
+#[derive(Debug, PartialEq)]
+pub enum SDiffParseOk {
+    ParamsSdiff(ParamsSDiff),
+    Help,
+    Version,
+    // Info(String),
+}
 
 /// Holds the given command line arguments except "--version" and "--help".
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct ParamsSdiff {
+pub struct ParamsSDiff {
     /// Identifier
-    pub util: DiffUtility,
+    pub executable: Executable,
     pub from: OsString,
     pub to: OsString,
     /// --diff-program=PROGRAM   use PROGRAM to compare files
@@ -57,25 +197,48 @@ pub struct ParamsSdiff {
     pub width: usize,
 }
 
-impl ParamsSdiff {
-    pub fn parse_params<I: Iterator<Item = OsString>>(opts: Peekable<I>) -> ResultParamsSdiffParse {
-        let parser = ArgParser::parse_params(&APP_OPTIONS, opts)?;
-        Self::try_from(&parser)
+impl ParamsSDiff {
+    /// Parses the program arguments.
+    ///
+    /// No executable as first param.
+    pub fn parse_params<I: Iterator<Item = OsString>>(
+        executable: &Executable,
+        args: Peekable<I>,
+    ) -> ResultSdiffParse {
+        let parser = match Parser::parse_params(&ARG_OPTIONS, args) {
+            Ok(p) => p,
+            Err(e) => {
+                return match e {
+                    ParseError::NoOperands(_) => Err(ParseError::NoOperands(executable.clone())),
+                    _ => Err(e.into()),
+                }
+            }
+        };
+        Self::try_from(executable, &parser)
+        // match Self::try_from(&parser) {
+        //     Ok(p) => Ok(p),
+        //     Err(e) => match e {
+        //         ParseError::NoAppOperand(_) => Err(ParseError::NoAppOperand(executable.clone())),
+        //         _ => Err(e.into()),
+        //     },
+        // }
     }
 
-    fn try_from(parser: &ArgParser) -> ResultParamsSdiffParse {
+    fn try_from(executable: &Executable, parser: &Parser) -> ResultSdiffParse {
         let mut params = Self {
-            util: DiffUtility::SDiff,
+            executable: executable.clone(),
             ..Default::default()
         };
 
         // set options
         for parsed_option in &parser.options_parsed {
-            dbg!(parsed_option);
+            // dbg!(parsed_option);
             match *parsed_option.app_option {
                 OPT_DIFF_PROGRAM => params.diff_program = parsed_option.arg_for_option.clone(),
                 OPT_EXPAND_TABS => params.expand_tabs = true,
-                OPT_HELP => return Ok(ParamsSdiffOk::Info(ArgParser::add_copyright(TEXT_HELP))),
+                OPT_HELP => return Ok(SDiffParseOk::Help),
+                // OPT_HELP => return Ok(ParamsSdiffOk::Info(arg_parser::add_copyright(TEXT_HELP))),
+                // OPT_HELP => return Ok(ParamsSdiffOk::Info(TEXT_HELP.to_string())),
                 OPT_IGNORE_ALL_SPACE => params.ignore_all_space = true,
                 OPT_IGNORE_BLANK_LINES => params.ignore_blank_lines = true,
                 OPT_IGNORE_CASE => params.ignore_case = true,
@@ -95,7 +258,7 @@ impl ParamsSdiff {
                     params.set_tabsize(parsed_option)?;
                 }
                 OPT_TEXT => params.text = true,
-                OPT_VERSION => return Ok(ParamsSdiffOk::Info(TEXT_VERSION.to_string())),
+                OPT_VERSION => return Ok(SDiffParseOk::Version),
                 OPT_WIDTH => {
                     params.set_width(parsed_option)?;
                 }
@@ -107,11 +270,7 @@ impl ParamsSdiff {
 
         // set operands
         match parser.operands.len() {
-            0 => {
-                return Err(ParamsSdiffError::ArgParserError(ArgParserError::NoOperand(
-                    params.util,
-                )))
-            }
+            0 => return Err(ParseError::NoOperands(executable.clone())),
             // If only file_1 is set, then file_2 defaults to '-', so it reads from StandardInput.
             1 => {
                 params.from = parser.operands[0].clone();
@@ -122,41 +281,32 @@ impl ParamsSdiff {
                 params.to = parser.operands[1].clone();
             }
             _ => {
-                return Err(ParamsSdiffError::ExtraOperand(
+                return Err(ParseError::ExtraOperand(
                     parser.operands[2].to_string_lossy().to_string(),
                 ));
             }
         }
 
-        // // Do as GNU sdiff, and completely disable printing if we are
-        // // outputting to /dev/null.
-        // #[cfg(not(target_os = "windows"))]
-        // if crate::sdiff::is_stdout_dev_null() {
-        //     params.silent = true;
-        //     params.verbose = false;
-        //     params.print_bytes = false;
-        // }
-
         // dbg!(&params);
-        Ok(ParamsSdiffOk::ParamsSdiff(params))
+        Ok(SDiffParseOk::ParamsSdiff(params))
     }
 
-    pub fn set_tabsize(&mut self, parsed_option: &ParsedOption) -> Result<usize, ParamsSdiffError> {
+    pub fn set_tabsize(&mut self, parsed_option: &ParsedOption) -> Result<usize, ParseError> {
         let tab_size = parsed_option.arg_for_option.clone().unwrap_or_default();
         let t = match tab_size.parse::<usize>() {
             Ok(w) => w,
-            Err(_) => return Err(ParamsSdiffError::InvalidNumber(parsed_option.clone())),
+            Err(_) => return Err(ParseError::InvalidNumber(parsed_option.clone())),
         };
         self.tabsize = t;
 
         Ok(t)
     }
 
-    pub fn set_width(&mut self, parsed_option: &ParsedOption) -> Result<usize, ParamsSdiffError> {
+    pub fn set_width(&mut self, parsed_option: &ParsedOption) -> Result<usize, ParseError> {
         let width = parsed_option.arg_for_option.clone().unwrap_or_default();
         let w = match width.parse::<usize>() {
             Ok(w) => w,
-            Err(_) => return Err(ParamsSdiffError::InvalidNumber(parsed_option.clone())),
+            Err(_) => return Err(ParseError::InvalidNumber(parsed_option.clone())),
         };
         self.width = w;
 
@@ -164,10 +314,10 @@ impl ParamsSdiff {
     }
 }
 
-impl Default for ParamsSdiff {
+impl Default for ParamsSDiff {
     fn default() -> Self {
         Self {
-            util: DiffUtility::SDiff,
+            executable: Executable::SDiff,
             from: Default::default(),
             to: Default::default(),
             diff_program: Default::default(),
@@ -198,27 +348,26 @@ impl Default for ParamsSdiff {
 #[cfg(test)]
 mod tests {
     use super::*;
-    // use crate::arg_parser::OPT_VERSION;
-
-    pub const TEXT_HELP_HINT: &str = "Try 'sdiff --help' for more information.";
 
     fn os(s: &str) -> OsString {
         OsString::from(s)
     }
 
     /// Simplify call of parser, just pass a normal string like in the Terminal.
-    fn parse(args: &str) -> ResultParamsSdiffParse {
+    fn parse(args: &str) -> ResultSdiffParse {
         let mut o = Vec::new();
         for arg in args.split(' ') {
             o.push(os(arg));
         }
-        let p = o.into_iter().peekable();
+        let mut p = o.into_iter().peekable();
+        // remove sdiff
+        let executable = Executable::from_args_os(&mut p, true).unwrap();
 
-        ParamsSdiff::parse_params(p)
+        ParamsSDiff::parse_params(&executable, p)
     }
 
-    fn res_ok(params: ParamsSdiff) -> ResultParamsSdiffParse {
-        Ok(ParamsSdiffOk::ParamsSdiff(params))
+    fn res_ok(params: ParamsSDiff) -> ResultSdiffParse {
+        Ok(SDiffParseOk::ParamsSdiff(params))
     }
 
     #[test]
@@ -226,8 +375,8 @@ mod tests {
         // file_1 and file_2 given
         assert_eq!(
             parse("sdiff foo bar"),
-            res_ok(ParamsSdiff {
-                util: DiffUtility::SDiff,
+            res_ok(ParamsSDiff {
+                executable: Executable::SDiff,
                 from: os("foo"),
                 to: os("bar"),
                 ..Default::default()
@@ -237,8 +386,8 @@ mod tests {
         // file_1 only
         assert_eq!(
             parse("sdiff foo"),
-            res_ok(ParamsSdiff {
-                util: DiffUtility::SDiff,
+            res_ok(ParamsSDiff {
+                executable: Executable::SDiff,
                 from: os("foo"),
                 to: os("-"),
                 ..Default::default()
@@ -246,30 +395,35 @@ mod tests {
         );
 
         // double dash without operand
-        // Test fails as this behavior is not replicated.
-        // assert_eq!(
-        //     parse_params("sdiff foo -- --help"),
-        //     res_ok(ParamsSdiff {
-        //         util: DiffUtility::SDiff,
-        //         file_1: os("foo"),
-        //         file_2: os("--help"),
-        //         ..Default::default()
-        //     }),
-        // );
-
-        // Err: too many operands
         assert_eq!(
-            parse("sdiff foo bar extra"),
-            Err(ParamsSdiffError::ExtraOperand("extra".to_string())),
+            parse("sdiff foo -- --help"),
+            res_ok(ParamsSDiff {
+                executable: Executable::SDiff,
+                from: os("foo"),
+                to: os("--help"),
+                ..Default::default()
+            }),
         );
 
         // Err: no arguments
-        assert_eq!(
-            parse("sdiff"),
-            Err(ParamsSdiffError::ArgParserError(ArgParserError::NoOperand(
-                DiffUtility::SDiff
-            )))
-        );
+        let msg = "missing operand after 'sdiff'";
+        match parse("sdiff") {
+            Ok(_) => assert!(false, "Should not be ok!"),
+            Err(e) => assert!(
+                e.to_string().contains(msg),
+                "error must contain: \"{msg}\"\nactual error: \"{e}\""
+            ),
+        }
+
+        // Err: too many operands
+        let msg = "extra operand 'should-not-be-here'";
+        match parse("sdiff foo bar should-not-be-here") {
+            Ok(_) => assert!(false, "Should not be ok!"),
+            Err(e) => assert!(
+                e.to_string().contains(msg),
+                "error must contain: \"{msg}\"\nactual error: \"{e}\""
+            ),
+        }
     }
 
     #[test]
@@ -279,8 +433,8 @@ mod tests {
         // --wi is abbreviated and uses equal sign
         // diff-program uses next arg
         // -O uses next arg
-        let params = ParamsSdiff {
-            util: DiffUtility::SDiff,
+        let params = ParamsSDiff {
+            executable: Executable::SDiff,
             from: os("foo"),
             to: os("bar"),
             diff_program: Some("prg".to_string()),
@@ -312,12 +466,13 @@ mod tests {
         );
 
         // negative value
+        let msg = "invalid argument '-2' for '--tabsize'";
         let r = parse("sdiff foo bar --tab=-2");
         match r {
             Ok(_) => assert!(false, "Should not be Ok."),
-            Err(e) => assert_eq!(
-                e.to_string(),
-                format!("sdiff: invalid argument '-2' for '--tabsize'\nsdiff: {TEXT_HELP_HINT}")
+            Err(e) => assert!(
+                e.to_string().contains(msg),
+                "Must contain: {msg}\nactual: {e}"
             ),
         }
     }

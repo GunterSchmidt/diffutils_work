@@ -4,6 +4,7 @@
 // files that was distributed with this source code.
 
 use regex::Regex;
+use std::ffi::OsStr;
 use std::io::{self, Error, Read, Write};
 use std::{ffi::OsString, fs};
 use unicode_width::UnicodeWidthStr;
@@ -14,11 +15,11 @@ use unicode_width::UnicodeWidthStr;
 #[must_use]
 pub fn do_expand_tabs(line: &[u8], tabsize: usize) -> Vec<u8> {
     let tab = b'\t';
-    let ntabs = line.iter().filter(|c| **c == tab).count();
-    if ntabs == 0 {
+    let n_tabs = line.iter().filter(|c| **c == tab).count();
+    if n_tabs == 0 {
         return line.to_vec();
     }
-    let mut result = Vec::with_capacity(line.len() + ntabs * (tabsize - 1));
+    let mut result = Vec::with_capacity(line.len() + n_tabs * (tabsize - 1));
     let mut offset = 0;
 
     let mut iter = line.split(|c| *c == tab).peekable();
@@ -72,6 +73,11 @@ pub fn get_modification_time(file_path: &str) -> String {
     modification_time
 }
 
+// Checks if files are the same (same file link), which must return equal
+pub fn is_same_file(from: &OsStr, to: &OsStr) -> bool {
+    (from == "-" && to == "-") || same_file::is_same_file(from, to).unwrap_or(false)
+}
+
 pub fn format_failure_to_read_input_file(
     executable: &OsString,
     filepath: &OsString,
@@ -88,6 +94,28 @@ pub fn format_failure_to_read_input_file(
     )
 }
 
+/// Formats the error messages of both files.
+pub fn format_failure_to_read_input_files(
+    executable: &OsString,
+    errors: &[(OsString, Error)],
+) -> String {
+    let mut msg = format_failure_to_read_input_file(
+        executable,
+        &errors[0].0, // filepath,
+        &errors[0].1, // &error,
+    );
+    if errors.len() > 1 {
+        msg.push('\n');
+        msg.push_str(&format_failure_to_read_input_file(
+            executable,
+            &errors[1].0, // filepath,
+            &errors[1].1, // &error,
+        ));
+    }
+
+    msg
+}
+
 pub fn read_file_contents(filepath: &OsString) -> io::Result<Vec<u8>> {
     if filepath == "-" {
         let mut content = Vec::new();
@@ -97,13 +125,30 @@ pub fn read_file_contents(filepath: &OsString) -> io::Result<Vec<u8>> {
     }
 }
 
-pub fn read_both_files(
-    from: &OsString,
-    to: &OsString,
-) -> Result<(Vec<u8>, Vec<u8>), (OsString, Error)> {
-    let from_content = read_file_contents(from).map_err(|e| (from.clone(), e))?;
-    let to_content = read_file_contents(to).map_err(|e| (to.clone(), e))?;
-    Ok((from_content, to_content))
+pub type ResultReadBothFiles = Result<(Vec<u8>, Vec<u8>), Vec<(OsString, Error)>>;
+/// Reads both files and returns the files or a list of errors, as both files can produce a separate error.
+pub fn read_both_files(from: &OsString, to: &OsString) -> ResultReadBothFiles {
+    let mut read_errors = Vec::new();
+    let from_content = match read_file_contents(from).map_err(|e| (from.clone(), e)) {
+        Ok(r) => r,
+        Err(e) => {
+            read_errors.push(e);
+            Vec::new()
+        }
+    };
+    let to_content = match read_file_contents(to).map_err(|e| (to.clone(), e)) {
+        Ok(r) => r,
+        Err(e) => {
+            read_errors.push(e);
+            Vec::new()
+        }
+    };
+
+    if read_errors.is_empty() {
+        Ok((from_content, to_content))
+    } else {
+        Err(read_errors)
+    }
 }
 
 #[cfg(test)]

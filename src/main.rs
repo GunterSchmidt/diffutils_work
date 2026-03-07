@@ -5,21 +5,20 @@
 
 use std::{
     env::ArgsOs,
-    ffi::{OsStr, OsString},
+    ffi::OsStr,
     iter::Peekable,
     path::{Path, PathBuf},
     process::ExitCode,
 };
 
-use crate::arg_parser::{DiffUtility, DiffUtilityError};
+use crate::arg_parser::Executable;
 // use predicates::name;
 
 mod arg_parser;
-mod cmp;
-// mod cmp_org;
+// mod cmp;
 mod context_diff;
 mod diff;
-mod diff3;
+// mod diff3;
 mod ed_diff;
 mod macros;
 mod normal_diff;
@@ -65,62 +64,23 @@ fn main() -> ExitCode {
     let exe_path = binary_path(&mut args);
     let exe_name = name(&exe_path);
 
-    let util_name = if exe_name == "diffutils" {
+    if exe_name == "diffutils" {
         // Discard the item we peeked.
         let _ = args.next();
-
-        args.peek()
-            .cloned()
-            .unwrap_or_else(|| second_arg_error(exe_name))
-    } else {
-        OsString::from(exe_name)
     };
 
-    match DiffUtility::try_from(&util_name) {
-        Ok(util) => match util {
-            DiffUtility::Cmp => cmp::main(args),
-            DiffUtility::Diff => diff::main(args),
-            // DiffUtility does not allow these, they return an error.
-            DiffUtility::Diff3 => diff3::main(args),
-            DiffUtility::Patch => todo!(),
-            DiffUtility::SDiff => sdiff::main(args),
-        },
-        Err(e) => {
-            let name = match &e {
-                DiffUtilityError::NameNotRecognized(name) => name,
-                DiffUtilityError::NotYetSupported(name) => name,
-                DiffUtilityError::Nothing => "diffutils",
-            };
-            eprintln!("{e}");
-            usage(name);
+    let Some(executable) = Executable::from_args_os(&mut args, false) else {
+        second_arg_error(exe_name)
+    };
+    match executable {
+        // Executable::Cmp => cmp::main(args),
+        Executable::Diff => diff::main(args),
+        // Executable::Diff3 => diff3::main(args),
+        // Executable::Patch => todo!(),
+        Executable::SDiff => sdiff::main(args),
+        _ => {
+            eprintln!("{executable}: utility not supported");
             ExitCode::from(2)
-            // process::exit(2);
         }
     }
-
-    //     let mut args = std::env::args_os().peekable();
-    //
-    //     let exe_path = binary_path(&mut args);
-    //     let exe_name = name(&exe_path);
-    //
-    //     let util_name = if exe_name == "diffutils" {
-    //         // Discard the item we peeked.
-    //         let _ = args.next();
-    //
-    //         args.peek()
-    //             .cloned()
-    //             .unwrap_or_else(|| second_arg_error(exe_name))
-    //     } else {
-    //         OsString::from(exe_name)
-    //     };
-    //
-    //     match util_name.to_str() {
-    //         Some("diff") => diff::main(args),
-    //         Some("cmp") => cmp::main(args),
-    //         Some(name) => {
-    //             eprintln!("{name}: utility not supported");
-    //             ExitCode::from(2)
-    //         }
-    //         None => second_arg_error(exe_name),
-    //     }
 }

@@ -1,8 +1,7 @@
 pub mod arg_parser;
-pub mod cmp;
-pub mod cmp_org;
+// pub mod cmp;
 pub mod context_diff;
-pub mod diff3;
+// pub mod diff3;
 pub mod ed_diff;
 pub mod macros;
 pub mod normal_diff;
