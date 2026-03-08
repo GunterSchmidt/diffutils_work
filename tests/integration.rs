@@ -64,7 +64,7 @@ mod common {
             cmd.assert()
                 .code(predicate::eq(2))
                 .failure()
-                .stderr(predicate::str::ends_with(format!(
+                .stderr(predicate::str::contains(format!(
                     ": {}: {error_message}\n",
                     &nopath.as_os_str().to_string_lossy()
                 )));
@@ -75,7 +75,7 @@ mod common {
             cmd.assert()
                 .code(predicate::eq(2))
                 .failure()
-                .stderr(predicate::str::ends_with(format!(
+                .stderr(predicate::str::contains(format!(
                     ": {}: {error_message}\n",
                     &nopath.as_os_str().to_string_lossy()
                 )));
@@ -358,9 +358,10 @@ mod cmp {
         cmd.assert()
             .code(predicate::eq(2))
             .failure()
-            .stderr(predicate::str::ends_with(
+            .stderr(predicate::str::contains(
                 // TODO has new error message
-                ": options -l and -s are incompatible\n",
+                // ": options -l and -s are incompatible\n",
+                ": options --verbose and --silent are incompatible",
             ));
 
         Ok(())

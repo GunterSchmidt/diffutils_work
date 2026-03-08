@@ -1,9 +1,14 @@
+// This file is part of the uutils diffutils package.
+//
+// For the full copyright and license information, please view the LICENSE-*
+// files that was distributed with this source code.
+
 use std::{ffi::OsString, iter::Peekable};
 
 use crate::{
     arg_parser::{
-        is_implemented, AppOption, Executable, NumberParser, OptionNameTypeUsed, ParseError,
-        ParsedOption, Parser, OPT_HELP, OPT_VERSION,
+        AppOption, Executable, NumberParser, OptionNameTypeUsed, ParseError, ParsedOption, Parser,
+        OPT_HELP, OPT_VERSION,
     },
     cmp::{BytesLimitU64, SkipU64},
 };
@@ -70,16 +75,6 @@ pub const APP_OPTIONS: [AppOption; 8] = [
     OPT_VERSION,
 ];
 
-// Array for not yet implemented options
-pub const NOT_YET_IMPLEMENTED: [AppOption; 6] = [
-    OPT_BYTES_LIMIT,
-    OPT_IGNORE_INITIAL,
-    OPT_IGNORE_INITIAL,
-    OPT_PRINT_BYTES,
-    OPT_QUIET,
-    OPT_VERBOSE,
-];
-
 /// Parser Result Ok Enum with Params.
 ///
 /// # Returns
@@ -142,9 +137,6 @@ impl ParamsCmp {
     ) -> ResultParamsCmpParse {
         let parser = Parser::parse_params(&APP_OPTIONS, args)?;
 
-        // check implemented options
-        is_implemented(&parser.options_parsed, &NOT_YET_IMPLEMENTED)?;
-
         let mut params = Self {
             executable: executable.clone(),
             ..Default::default()
@@ -173,7 +165,7 @@ impl ParamsCmp {
 
         // set operands
         match parser.operands.len() {
-            0 => return Err(ParseError::NoOperands(executable.clone()).into()),
+            0 => return Err(ParseError::NoOperands(executable.clone())),
             // If only file_1 is set, then file_2 defaults to '-', so it reads from StandardInput.
             1 => {
                 params.from = parser.operands[0].clone();
@@ -201,10 +193,7 @@ impl ParamsCmp {
                 }
             }
             _ => {
-                return Err(ParseError::ExtraOperand(
-                    parser.operands[4].to_string_lossy().to_string(),
-                )
-                .into());
+                return Err(ParseError::ExtraOperand(parser.operands[4].clone()));
             }
         }
 
@@ -273,7 +262,7 @@ impl ParamsCmp {
 
     /// Sets the [Self::skip_bytes_file_1] value.
     ///
-    /// * bytes - A valid number String, e.g. 1800 or 12KiB
+    /// * ParsedOption.arg_for_option - A valid number String, e.g. 1800 or 12KiB
     ///
     /// If calling this manually, set_skip_bytes_file_2 to the same value unless
     /// separate values are required.  
@@ -317,8 +306,8 @@ impl ParamsCmp {
         // Should actually raise an error if --silent is set, but GNU cmp does not do that.
         if self.silent {
             Err(ParseError::OptionsIncompatible(
-                &OPT_SILENT,
                 &OPT_PRINT_BYTES,
+                &OPT_SILENT,
             ))
         } else {
             self.print_bytes = true;
@@ -329,11 +318,11 @@ impl ParamsCmp {
 
     pub fn set_silent(&mut self) -> Result<(), ParseError> {
         if self.verbose {
-            Err(ParseError::OptionsIncompatible(&OPT_SILENT, &OPT_VERBOSE))
+            Err(ParseError::OptionsIncompatible(&OPT_VERBOSE, &OPT_SILENT))
         } else if self.print_bytes {
             Err(ParseError::OptionsIncompatible(
-                &OPT_SILENT,
                 &OPT_PRINT_BYTES,
+                &OPT_SILENT,
             ))
         } else {
             self.silent = true;
@@ -344,7 +333,7 @@ impl ParamsCmp {
 
     pub fn set_verbose(&mut self) -> Result<(), ParseError> {
         if self.silent {
-            Err(ParseError::OptionsIncompatible(&OPT_SILENT, &OPT_VERBOSE))
+            Err(ParseError::OptionsIncompatible(&OPT_VERBOSE, &OPT_SILENT))
         } else {
             self.verbose = true;
 
@@ -353,53 +342,12 @@ impl ParamsCmp {
     }
 }
 
-// /// Contains all parser errors and their text messages.
-// #[derive(Debug, PartialEq)]
-// pub enum CmpParseError {
-//     /// Bubbled up error
-//     ParseError(ParseError),
-//
-//     // /// Ignore Initial is given as extra operand and also as option. \
-//     // /// This is not an original GNU cmp error message, where the operands are ignored.
-//     // /// (3rd operand, 4th operand, --i value).
-//     // IgnoreInitialDouble(String, String, String),
-//     SilentPrintBytesIncompatible,
-//     SilentVerboseIncompatible,
-// }
-//
-// impl std::error::Error for CmpParseError {}
-//
-// impl From<ParseError> for CmpParseError {
-//     fn from(err: ParseError) -> Self {
-//         Self::ParseError(err)
-//     }
-// }
-//
-// impl std::fmt::Display for CmpParseError {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         // TODO different short and long name errors?
-//         let msg = match self {
-//             CmpParseError::ParseError(e) => return write!(f, "{e}"),
-//
-//             CmpParseError::SilentPrintBytesIncompatible => {
-//                 "options '--print-bytes' ('-b') and '--silent' ('-s') are incompatible"
-//             }
-//             CmpParseError::SilentVerboseIncompatible => {
-//                 "options '--verbose' ('-l') and '--silent' ('-s') are incompatible"
-//             }
-//         };
-//         write!(f, "{msg}")
-//     }
-// }
-
 // Usually assert is used like assert_eq(result, desired_result).
 #[cfg(test)]
 mod tests {
     use crate::arg_parser::OPT_VERSION;
 
     use super::*;
-
-    pub const TEXT_HELP_HINT: &str = "Try 'cmp --help' for more information.";
 
     fn os(s: &str) -> OsString {
         OsString::from(s)
@@ -471,7 +419,7 @@ mod tests {
             }),
         );
 
-        // This test is not valid. GNU cmp gives an invalid error, it does not set it to usize::MAX
+        // TODO This test is not valid, or?. GNU cmp gives an invalid error, it does not set it to usize::MAX
         // --ignore-initial as operands with 1 2Y (which is greater than u64)
         // assert_eq!(
         //     parse_params("cmp foo bar 1 2Y"),
@@ -486,7 +434,7 @@ mod tests {
         // );
 
         // Failure: --ignore-initial as operands with 1 2Y (which is greater than u64)
-        let msg = "invalid '--ignore-initial' (-i) value '2Y'";
+        let msg = "invalid --ignore-initial value '2Y'";
         match parse("cmp foo bar 1 2Y") {
             Ok(_) => assert!(false, "Should not be ok!"),
             Err(e) => assert!(
@@ -498,7 +446,7 @@ mod tests {
         // Err: too many operands
         assert_eq!(
             parse("cmp foo bar 1 2 3"),
-            Err(ParseError::ExtraOperand("3".to_string()).into()),
+            Err(ParseError::ExtraOperand(os("3")).into()),
         );
 
         // Err: no arguments
@@ -546,12 +494,14 @@ mod tests {
             )
             .into()),
         );
-        let r = parse("cmp --ver foo bar");
-        match r {
-            Ok(_) => assert!(false, "Should not be Ok."),
-            Err(e) => assert!(e.to_string().contains(
-                "cmp: option '--ver' is ambiguous; possibilities: '--verbose' '--version'"
-            )),
+        // let msg = "option '--ver' is ambiguous; possibilities: '--verbose' '--version'";
+        let msg = "option '--ver' is ambiguous; possibilities: --verbose --version";
+        match parse("cmp --ver foo bar") {
+            Ok(_) => assert!(false, "Should not be ok!"),
+            Err(e) => assert!(
+                e.to_string().contains(msg),
+                "error must contain: \"{msg}\"\nactual error: \"{e}\""
+            ),
         }
 
         // --verbose & --print-bytes
@@ -597,7 +547,8 @@ mod tests {
         assert_eq!(parse("cmp --quiet foo bar"), res_ok(silent.clone()));
 
         // Options --silent and --verbose do not mix.
-        let msg = "missing operand after 'sdiff'";
+        // let msg = "options -l and -s are incompatible";
+        let msg = "options --verbose and --silent are incompatible";
         match parse("cmp -l -s foo bar") {
             Ok(_) => assert!(false, "Should not be ok!"),
             Err(e) => assert!(
@@ -608,7 +559,7 @@ mod tests {
 
         // Options --silent and --print-bytes do not mix.
         // This does not give an error in GNU cmp, but should.
-        let msg = "missing operand after 'sdiff'";
+        let msg = "options --print-bytes and --silent are incompatible";
         match parse("cmp -b -s foo bar") {
             Ok(_) => assert!(false, "Should not be ok!"),
             Err(e) => assert!(
@@ -706,7 +657,7 @@ mod tests {
         assert_eq!(parse("cmp -n 1EiB foo bar"), res_ok(bytes_limit.clone()));
 
         // Failure cases
-        let msg = "missing operand after 'sdiff'";
+        let msg = "invalid --bytes value '1ZB'";
         match parse("cmp -n 1ZB foo bar") {
             Ok(_) => assert!(false, "Should not be ok!"),
             Err(e) => assert!(
@@ -714,7 +665,8 @@ mod tests {
                 "error must contain: \"{msg}\"\nactual error: \"{e}\""
             ),
         }
-        let msg = "missing operand after 'sdiff'";
+        let msg =
+            "invalid --bytes value '99999999999999999999999999999999999999999999999999999999999' (too large)";
         match parse("cmp -n 99999999999999999999999999999999999999999999999999999999999 foo bar") {
             Ok(_) => assert!(false, "Should not be ok!"),
             Err(e) => assert!(
@@ -765,55 +717,56 @@ mod tests {
         // Failure cases
         // Number too large
         // TODO This tests for the new error message which is different from GNU cmp
-        let r = parse("cmp -i 99999999999999999999999999999999999999999999999999999999999 foo bar");
-        match r {
-            Ok(_) => assert!(false, "Should not be Ok."),
-            Err(e) => assert_eq!(
-                e.to_string(),
-                format!("cmp: invalid '--ignore-initial' value (too large) '99999999999999999999999999999999999999999999999999999999999'\ncmp: {TEXT_HELP_HINT}")
+        let msg =
+            "invalid --ignore-initial value '99999999999999999999999999999999999999999999999999999999999' (too large)";
+        match parse("cmp -i 99999999999999999999999999999999999999999999999999999999999 foo bar") {
+            Ok(_) => assert!(false, "Should not be ok!"),
+            Err(e) => assert!(
+                e.to_string().contains(msg),
+                "error must contain: \"{msg}\"\nactual error: \"{e}\""
             ),
         }
 
-        #[cfg(not(feature = "allow_case_insensitive_byte_units"))]
+        #[cfg(not(feature = "feat_allow_case_insensitive_number_units"))]
         {
             // wrong unit
-            let r = parse("cmp --ignore-initial=1mb foo bar");
-            match r {
-                Ok(_) => assert!(false, "Should not be Ok."),
-                Err(e) => assert_eq!(
-                    e.to_string(),
-                    format!("cmp: invalid '--ignore-initial' value '1mb'\ncmp: {TEXT_HELP_HINT}")
+            let msg = "invalid --ignore-initial value '1mb'";
+            match parse("cmp --ignore-initial=1mb foo bar") {
+                Ok(_) => assert!(false, "Should not be ok!"),
+                Err(e) => assert!(
+                    e.to_string().contains(msg),
+                    "error must contain: \"{msg}\"\nactual error: \"{e}\""
                 ),
             }
         }
 
         // wrong unit
-        let r = parse("cmp --ignore-initial=1jb foo bar");
-        match r {
-            Ok(_) => assert!(false, "Should not be Ok."),
-            Err(e) => assert_eq!(
-                e.to_string(),
-                format!("cmp: invalid '--ignore-initial' value '1jb'\ncmp: {TEXT_HELP_HINT}")
+        let msg = "invalid --ignore-initial value '1jb'";
+        match parse("cmp --ignore-initial=1jb foo bar") {
+            Ok(_) => assert!(false, "Should not be ok!"),
+            Err(e) => assert!(
+                e.to_string().contains(msg),
+                "error must contain: \"{msg}\"\nactual error: \"{e}\""
             ),
         }
 
         // // too many values
-        let r = parse("cmp --ignore-initial=1:2:3 foo bar");
-        match r {
-            Ok(_) => assert!(false, "Should not be Ok."),
-            Err(e) => assert_eq!(
-                e.to_string(),
-                format!("cmp: invalid '--ignore-initial' value '2:3'\ncmp: {TEXT_HELP_HINT}")
+        let msg = "invalid --ignore-initial value '2:3'";
+        match parse("cmp --ignore-initial=1:2:3 foo bar") {
+            Ok(_) => assert!(false, "Should not be ok!"),
+            Err(e) => assert!(
+                e.to_string().contains(msg),
+                "error must contain: \"{msg}\"\nactual error: \"{e}\""
             ),
         }
 
         // negative value
-        let r = parse("cmp --ignore-initial=-1 foo bar");
-        match r {
-            Ok(_) => assert!(false, "Should not be Ok."),
-            Err(e) => assert_eq!(
-                e.to_string(),
-                format!("cmp: invalid '--ignore-initial' value '-1'\ncmp: {TEXT_HELP_HINT}")
+        let msg = "invalid --ignore-initial value '-1'";
+        match parse("cmp --ignore-initial=-1 foo bar") {
+            Ok(_) => assert!(false, "Should not be ok!"),
+            Err(e) => assert!(
+                e.to_string().contains(msg),
+                "error must contain: \"{msg}\"\nactual error: \"{e}\""
             ),
         }
 

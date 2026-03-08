@@ -46,14 +46,21 @@ inherits = "release"
 lto = "thin"
 
 [features]
+default = ["feat_check_not_yet_implemented"]
 # default = ["feat_bench_not_cmp"]
-# default = ["allow_case_insensitive_byte_units"]
+# default = ["feat_allow_case_insensitive_number_units"]
 # instead of limiting to KiB, MiB, etc, one can write kib, mib, Mb or whatever case.
-allow_case_insensitive_byte_units = []
-# Turn bench for diffutils cmp off
+feat_allow_case_insensitive_number_units = []
+# Disable bench for diffutils cmp
 feat_bench_not_cmp = []
-# Turn bench for diffutils diff off
+# Disable bench for diffutils diff
 feat_bench_not_diff = []
+# Enables a check on options defined in NOT_YET_IMPLEMENTED.
+# If on the parser will return an error message in these cases.
+# This is preferable when running the util as unsupported options
+# are pointed out to the user, but can make tests fail. 
+feat_check_not_yet_implemented = []
+
 
 [[bench]]
 name = "bench_divan"

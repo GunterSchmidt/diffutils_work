@@ -1,4 +1,7 @@
-use std::{ffi::OsString, iter::Peekable};
+// This file is part of the uutils diffutils package.
+//
+// For the full copyright and license information, please view the LICENSE-*
+// files that was distributed with this source code.use std::{ffi::OsString, iter::Peekable};
 
 use crate::{
     arg_parser::{self, ArgParser, ArgParserError, Executable, OPT_HELP, OPT_VERSION},

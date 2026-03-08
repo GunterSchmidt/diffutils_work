@@ -74,11 +74,11 @@ pub const TEXT_HELP: &str = const_format::concatcp!(
 /// * 1 if inputs are different
 /// * 2 in error case
 pub fn main(mut args: Peekable<ArgsOs>) -> ExitCode {
-    let Some(executable) = Executable::from_args_os(&mut args, true) else {
+    let Some(executable) = Executable::from_args_os(&mut args, false) else {
         eprintln!("Expected utility name as first argument, got nothing.");
         return ExitCode::FAILURE;
     };
-    match sdiff(&executable, args) {
+    match sdiff(args) {
         Ok(res) => match res {
             SDiffOk::Different => ExitCode::FAILURE,
             SDiffOk::Equal => ExitCode::SUCCESS,
@@ -107,12 +107,15 @@ pub enum SDiffOk {
     Version,
 }
 
-pub fn sdiff<I: Iterator<Item = OsString>>(
-    executable: &Executable,
-    args: Peekable<I>,
-) -> Result<SDiffOk, SDiffError> {
+/// This is the full sdiff call.
+///
+/// The first arg needs to be the executable, then the operands and options.
+pub fn sdiff<I: Iterator<Item = OsString>>(mut args: Peekable<I>) -> Result<SDiffOk, SDiffError> {
+    let Some(executable) = Executable::from_args_os(&mut args, false) else {
+        return Err(ParseError::NoExecutable.into());
+    };
     // read params
-    let params = match ParamsSDiff::parse_params(executable, args)? {
+    let params = match ParamsSDiff::parse_params(&executable, args)? {
         SDiffParseOk::Params(p) => p,
         SDiffParseOk::Help => return Ok(SDiffOk::Help),
         SDiffParseOk::Version => return Ok(SDiffOk::Version),
@@ -141,6 +144,7 @@ pub fn sdiff_compare(params: &ParamsSDiff) -> Result<SDiffOk, SDiffError> {
         Err(errors) => {
             let msg =
                 utils::format_failure_to_read_input_files(&params.executable.executable(), &errors);
+            dbg!(&msg);
             return Err(SDiffError::ReadFileError(msg));
         }
     };

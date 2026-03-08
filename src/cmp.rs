@@ -103,7 +103,7 @@ pub fn main(mut args: Peekable<ArgsOs>) -> ExitCode {
         eprintln!("Expected utility name as first argument, got nothing.");
         return ExitCode::FAILURE;
     };
-    match cmp(&executable, args) {
+    match cmp(args) {
         Ok(res) => match res {
             CmpOk::Different => ExitCode::FAILURE,
             CmpOk::Equal => ExitCode::SUCCESS,
@@ -132,12 +132,15 @@ pub enum CmpOk {
     Version,
 }
 
-pub fn cmp<I: Iterator<Item = OsString>>(
-    executable: &Executable,
-    args: Peekable<I>,
-) -> Result<CmpOk, CmpError> {
+/// This is the full sdiff call.
+///
+/// The first arg needs to be the executable, then the operands and options.
+pub fn cmp<I: Iterator<Item = OsString>>(mut args: Peekable<I>) -> Result<CmpOk, CmpError> {
+    let Some(executable) = Executable::from_args_os(&mut args, false) else {
+        return Err(ParseError::NoExecutable.into());
+    };
     // read params
-    let params = match ParamsCmp::parse_params(executable, args)? {
+    let params = match ParamsCmp::parse_params(&executable, args)? {
         CmpParseOk::Params(p) => p,
         CmpParseOk::Help => return Ok(CmpOk::Help),
         CmpParseOk::Version => return Ok(CmpOk::Version),
@@ -149,6 +152,7 @@ pub fn cmp<I: Iterator<Item = OsString>>(
     cmp_compare(&params)
 }
 
+// TODO struct Cmp
 /// This is the main function to compare the files. \
 /// Files are limited to u64 bytes and u64 lines.
 // TODO CmpError
@@ -582,7 +586,7 @@ fn is_stdout_dev_null() -> bool {
 ///
 /// To centralize error messages and make it easier to use in a lib.
 #[derive(Debug, PartialEq)]
-#[allow(clippy::enum_variant_names)]
+#[allow(clippy::enum_variant_names, unused)]
 pub enum CmpError {
     // parse errors
     ParseError(ParseError),

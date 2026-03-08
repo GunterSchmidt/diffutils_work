@@ -116,8 +116,10 @@ fn parse_to_app_options(lines: &[String]) -> String {
     for (i, line) in lines.iter().enumerate() {
         // find short name
         if line.trim().starts_with("-") {
-            let mut opt = AppOption::default();
-            opt.line = line.clone();
+            let mut opt = AppOption {
+                line: line.clone(),
+                ..Default::default()
+            };
             println!("{}: {}", i + 1, line);
             content.push_str("// ");
             content.push_str(line);
@@ -218,7 +220,7 @@ fn parse_to_app_options(lines: &[String]) -> String {
     content.push_str("    pub to: OsString,\n");
     for opt in opts.iter() {
         content.push_str("    /// ");
-        content.push_str(&opt.line.trim());
+        content.push_str(opt.line.trim());
         content.push('\n');
         let t = if opt.has_arg {
             "Option<String>"

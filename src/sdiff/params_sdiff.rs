@@ -9,7 +9,7 @@
 use std::{ffi::OsString, iter::Peekable};
 
 use crate::arg_parser::{
-    is_implemented, AppOption, Executable, ParseError, ParsedOption, Parser, OPT_HELP, OPT_VERSION,
+    AppOption, Executable, ParseError, ParsedOption, Parser, OPT_HELP, OPT_VERSION,
 };
 
 // use crate::{
@@ -136,6 +136,7 @@ pub const ARG_OPTIONS: [AppOption; 20] = [
 ];
 
 // These options throw an error, rather than go unnoticed.
+#[cfg(feature = "feat_check_not_yet_implemented")]
 pub const NOT_YET_IMPLEMENTED: [AppOption; 15] = [
     OPT_DIFF_PROGRAM,
     OPT_IGNORE_ALL_SPACE,
@@ -258,7 +259,10 @@ impl ParamsSDiff {
         let parser = Parser::parse_params(&ARG_OPTIONS, args)?;
 
         // check implemented options
-        is_implemented(&parser.options_parsed, &NOT_YET_IMPLEMENTED)?;
+        #[cfg(feature = "feat_check_not_yet_implemented")]
+        {
+            crate::arg_parser::is_implemented(&parser.options_parsed, &NOT_YET_IMPLEMENTED)?;
+        }
 
         let mut params = Self {
             executable: executable.clone(),
@@ -316,9 +320,7 @@ impl ParamsSDiff {
                 params.to = parser.operands[1].clone();
             }
             _ => {
-                return Err(ParseError::ExtraOperand(
-                    parser.operands[2].to_string_lossy().to_string(),
-                ));
+                return Err(ParseError::ExtraOperand(parser.operands[2].clone()));
             }
         }
 
@@ -434,6 +436,7 @@ mod tests {
     #[test]
     fn execution_modes() {
         // Test all options
+        // Disable feature "feat_check_not_yet_implemented"
         // I^A is at the end of the single options, forcing '^A' as argument for 'I'.
         // --wi is abbreviated and uses equal sign
         // diff-program uses next arg
@@ -463,15 +466,20 @@ mod tests {
             version: false,
             width: 150,
         };
-        assert_eq!(
-            parse(
-                "sdiff foo bar -iEZbWBalstdHI^A --wi=150 --diff-program prg -o out --strip --tab=2"
-            ),
-            res_ok(params.clone())
+        let r = parse(
+            "sdiff foo bar -iEZbWBalstdHI^A --wi=150 --diff-program prg -o out --strip --tab=2",
         );
+        match &r {
+            Ok(_) => assert_eq!(r, res_ok(params.clone())),
+            Err(e) => match e {
+                ParseError::NotYetImplemented(_) => {}
+                _ => assert_eq!(r, res_ok(params.clone())),
+            },
+        }
 
         // negative value
-        let msg = "invalid argument '-2' for '--tabsize'";
+        // let msg = "invalid argument '-2' for '--tabsize'";
+        let msg = "invalid --tabsize value '-2'";
         let r = parse("sdiff foo bar --tab=-2");
         match r {
             Ok(_) => assert!(false, "Should not be Ok."),

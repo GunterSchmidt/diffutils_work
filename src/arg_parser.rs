@@ -50,7 +50,14 @@ pub fn add_copyright(text: &str) -> String {
 /// This is the central output function. I affects all utils. \
 /// It allows to just use 'eprintln!("{e}");' in case of an error.
 pub fn format_error_test<T: Error>(executable: &Executable, error: &T) -> String {
-    format!("{executable}: {error}\n{executable}: Try '{executable} --help' for more information.",)
+    // for messages the have the executable already
+    let exe = format!("{executable}: ");
+    let msg = error.to_string();
+    if msg.starts_with(&exe) {
+        format!("{msg}\n{exe}Try '{executable} --help' for more information.",)
+    } else {
+        format!("{exe}{msg}\n{exe}Try '{executable} --help' for more information.",)
+    }
 }
 
 /// Returns the standardized version text for this utility.
@@ -104,21 +111,25 @@ pub struct AppOption {
 impl AppOption {
     /// formatted long option
     ///
-    /// Returns the long name formatted: "'--option'".
+    /// Returns the long name formatted: "--option". \
+    /// There is inconsistency in GNU diffutils, if these are printed with or without quotes.
     pub fn format_long(&self) -> String {
-        format!("'--{}'", self.long_name)
+        format!("--{}", self.long_name)
     }
 
     /// formatted long and short option
     ///
-    /// # Returns
+    /// There is inconsistency in GNU diffutils, if these are printed with or without quotes.
+    ///
+    ///  # Returns
     /// * Some(short): "'--option' (-c)".
     /// * None: [Self::format_long]
-    pub fn format_long_short(&self) -> String {
-        match self.short {
-            Some(c) => format!("'--{}' (-{c})", self.long_name),
-            None => self.format_long(),
-        }
+    pub fn format_for_error_msg(&self) -> String {
+        self.format_long()
+        // match self.short {
+        //     Some(c) => format!("--{} (-{c})", self.long_name),
+        //     None => self.format_long(),
+        // }
     }
 
     /// formatted option char
@@ -253,19 +264,21 @@ pub enum OptionNameTypeUsed {
 ///
 /// # Example: read params for sdiff
 /// ```rust
-/// # use diffutilslib::sdiff::params_sdiff::ParamsSdiff;
-/// # use diffutilslib::sdiff::params_sdiff_def::ParamsSdiffOk;
+/// # use diffutilslib::sdiff::{sdiff, SDiffOk, TEXT_HELP};
+/// # use diffutilslib::sdiff::params_sdiff;
 /// let args = "sdiff --help";
 /// // let args = "sdiff file_1.txt file_2.txt --width=40";
 /// // Test helper conversion, usually this is ArgsOs.
-/// let opts = diffutilslib::arg_parser::args_into_peekable_os_strings(&args);
-/// let params = match ParamsSdiff::parse_params(opts) {
+/// let args = diffutilslib::arg_parser::args_into_peekable_os_strings(&args);
+/// let params = match sdiff(args) {
 ///     Ok(res) => match res {
-///         ParamsSdiffOk::Info(info) => {
-///             println!("{info}");
+///         SDiffOk::Different => todo!(),
+///         SDiffOk::Equal => todo!(),
+///         SDiffOk::Help => {
+///             println!("{TEXT_HELP}");
 ///             return; // ExitCode::from(0);
 ///         }
-///         ParamsSdiffOk::ParamsSdiff(params) => params,
+///         SDiffOk::Version => todo!(),
 ///     },
 ///     Err(e) => {
 ///         eprintln!("{e}");
@@ -522,7 +535,7 @@ pub enum ParseError {
 
     /// Having more operands than allowed (usually 2)
     /// (wrong operand)
-    ExtraOperand(String),
+    ExtraOperand(OsString),
 
     /// Non-existent single dash option.
     /// (unidentified option)
@@ -581,16 +594,16 @@ impl Display for ParseError {
                 write!(
                     f,
                     "option {} requires an argument",
-                    opt.app_option.format_long_short(),
+                    opt.app_option.format_for_error_msg(),
                 )
             }
-            ParseError::ExtraOperand(opt) => write!(f, "extra operand '{opt}'"),
+            ParseError::ExtraOperand(opt) => write!(f, "extra operand '{}'", opt.to_string_lossy()),
             ParseError::InvalidValueNumber(opt) | ParseError::InvalidValueNumberUnit(opt) => {
                 write!(
                     f,
                     "invalid {} value '{}'",
                     // "invalid argument '{}' for '--{}'{}",
-                    opt.app_option.format_long_short(),
+                    opt.app_option.format_for_error_msg(),
                     opt.arg_for_option_or_empty_string(),
                     // opt.short_char_or_empty_string(),
                 )
@@ -598,9 +611,9 @@ impl Display for ParseError {
             ParseError::InvalidValueNumberOverflow(opt) => {
                 write!(
                     f,
-                    "invalid '--{}' value '{}' (too large)",
+                    "invalid {} value '{}' (too large)",
                     // "invalid argument '{}' for '--{}'{}",
-                    opt.app_option.long_name,
+                    opt.app_option.format_for_error_msg(),
                     opt.arg_for_option_or_empty_string(),
                     // opt.short_char_or_empty_string(),
                 )
@@ -630,8 +643,8 @@ impl Display for ParseError {
                 write!(
                     f,
                     "options {} and {} are incompatible",
-                    op_1.format_long_short(),
-                    op_2.format_long_short()
+                    op_1.format_for_error_msg(),
+                    op_2.format_for_error_msg()
                 )
             }
             ParseError::UnrecognizedOption(param) => {
@@ -712,8 +725,8 @@ impl NumberParser {
     ///
     /// Units up eo Exabyte (EiB) following GNU documentation: \
     /// <https://www.gnu.org/software/diffutils/manual/html_node/cmp-Options.html>.
-    #[cfg(not(feature = "allow_case_insensitive_byte_units"))]
-    #[allow(unused)] // required for cmp
+    #[cfg(not(feature = "feat_allow_case_insensitive_number_units"))]
+    // #[allow(unused)] // required for cmp
     pub fn parse_number_unit(unit: &str) -> Option<u64> {
         let multiplier = match unit {
             "kB" | "KB" => 1_000,
@@ -748,8 +761,8 @@ impl NumberParser {
     /// which then can be used to calculate the final number of bytes.
     /// Following GNU documentation: https://www.gnu.org/software/diffutils/manual/html_node/cmp-Options.html
     /// TODO case
-    #[cfg(feature = "allow_case_insensitive_byte_units")]
-    pub fn parse_number_unit(unit: &str) -> ResultParseNumber {
+    #[cfg(feature = "feat_allow_case_insensitive_number_units")]
+    pub fn parse_number_unit(unit: &str) -> Option<u64> {
         // Note that GNU cmp advertises supporting up to Y, but fails if you try
         // to actually use anything beyond E.
         let unit = unit.to_owned().to_ascii_lowercase();
@@ -776,11 +789,11 @@ impl NumberParser {
             // "yb" => 1_000_000_000_000_000_000_000_000,
             // "y" | "yib" => 1_208_925_819_614_629_174_706_176,
             _ => {
-                return Err(ParseNumberError::InvalidUnit);
+                return None;
             }
         };
 
-        Ok(multiplier)
+        Some(multiplier)
     }
 }
 
