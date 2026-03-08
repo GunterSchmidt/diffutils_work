@@ -111,7 +111,7 @@ pub const OPT_WIDTH: AppOption = AppOption {
     has_arg: true,
 };
 
-// Array for ParamsGen
+// Array for ArgParser
 pub const ARG_OPTIONS: [AppOption; 20] = [
     OPT_DIFF_PROGRAM,
     OPT_EXPAND_TABS,
@@ -133,6 +133,25 @@ pub const ARG_OPTIONS: [AppOption; 20] = [
     OPT_TEXT,
     OPT_VERSION,
     OPT_WIDTH,
+];
+
+// These options throw an error, rather than go unnoticed.
+pub const NOT_YET_IMPLEMENTED: [AppOption; 15] = [
+    OPT_DIFF_PROGRAM,
+    OPT_IGNORE_ALL_SPACE,
+    OPT_IGNORE_BLANK_LINES,
+    OPT_IGNORE_CASE,
+    OPT_IGNORE_MATCHING_LINES,
+    OPT_IGNORE_SPACE_CHANGE,
+    OPT_IGNORE_TAB_EXPANSION,
+    OPT_IGNORE_TRAILING_SPACE,
+    OPT_LEFT_COLUMN,
+    OPT_MINIMAL,
+    OPT_OUTPUT,
+    OPT_SPEED_LARGE_FILES,
+    OPT_STRIP_TRAILING_CR,
+    OPT_SUPPRESS_COMMON_LINES,
+    OPT_TEXT,
 ];
 
 /// Success return type for parsing of params.
@@ -200,7 +219,7 @@ pub struct ParamsSDiff {
 impl ParamsSDiff {
     /// Parses the program arguments.
     ///
-    /// No executable as first param.
+    /// First argument is expected to be the executable.
     pub fn parse_params<I: Iterator<Item = OsString>>(
         executable: &Executable,
         args: Peekable<I>,
@@ -210,18 +229,25 @@ impl ParamsSDiff {
             Err(e) => {
                 return match e {
                     ParseError::NoOperands(_) => Err(ParseError::NoOperands(executable.clone())),
-                    _ => Err(e.into()),
+                    _ => Err(e),
                 }
             }
         };
+
+        // check implemented options
+        if let Some(not_yet) = parser
+            .options_parsed
+            .iter()
+            .find(|o| NOT_YET_IMPLEMENTED.contains(o.app_option))
+        {
+            return Err(ParseError::NotYetImplemented(format!(
+                "'--{}' (-{})",
+                not_yet.app_option.long_name,
+                not_yet.app_option.short.unwrap_or(' ')
+            )));
+        }
+
         Self::try_from(executable, &parser)
-        // match Self::try_from(&parser) {
-        //     Ok(p) => Ok(p),
-        //     Err(e) => match e {
-        //         ParseError::NoAppOperand(_) => Err(ParseError::NoAppOperand(executable.clone())),
-        //         _ => Err(e.into()),
-        //     },
-        // }
     }
 
     fn try_from(executable: &Executable, parser: &Parser) -> ResultSdiffParse {

@@ -1,4 +1,4 @@
-//! This is a little helper to create the AppOptions when using ParamsGen.
+//! This is a little helper to create the AppOptions when using ArgParser.
 //!
 //! Create the file by 'diff --help > diff_help.txt'". \
 //! Then 'cargo run -- diff_help.txt'
@@ -69,11 +69,7 @@ impl Display for AppOption {
     // };
 
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(
-            f,
-            "pub(super) const {}: AppOption = AppOption {{",
-            self.option
-        )?;
+        writeln!(f, "pub const {}: AppOption = AppOption {{", self.option)?;
         writeln!(f, "    long_name: \"{}\",", self.long_name)?;
         writeln!(f, "    short: {:?},", self.short)?;
         writeln!(f, "    has_arg: {},", self.has_arg)?;
@@ -187,7 +183,7 @@ fn parse_to_app_options(lines: &[String]) -> String {
     // create the array
     content.push_str("\n// Array for ArgParser\n");
     content.push_str(&format!(
-        "pub(super) const APP_OPTIONS: [AppOption; {}] = [\n",
+        "pub const APP_OPTIONS: [AppOption; {}] = [\n",
         opts.len()
     ));
     for opt in opts.iter() {
@@ -201,7 +197,7 @@ fn parse_to_app_options(lines: &[String]) -> String {
     content.push_str("#[derive(Debug, Clone, Eq, PartialEq)]\n");
     content.push_str("pub struct ParamsXxx {\n");
     content.push_str("    /// Identifier\n");
-    content.push_str("    pub util: DiffUtility,\n");
+    content.push_str("    pub util: Executable,\n");
     content.push_str("    // pub executable: OsString,\n");
     content.push_str("    pub from: OsString,\n");
     content.push_str("    pub to: OsString,\n");

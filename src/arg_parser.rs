@@ -14,7 +14,6 @@ use std::{
     iter::Peekable,
 };
 
-pub type ResultArgParser = Result<ArgParser, ParseError>;
 type ResultParseNumber = Result<u64, ParseNumberError>;
 
 // TODO finalize copyright
@@ -52,16 +51,8 @@ pub fn add_copyright(text: &str) -> String {
 ///
 /// This is the central output function. I affects all utils. \
 /// It allows to just use 'eprintln!("{e}");' in case of an error.
-/// TODO get_error_text
-pub fn write_err<T: Error>(
-    f: &mut std::fmt::Formatter<'_>,
-    util: &Executable,
-    error: &T,
-) -> Result<(), std::fmt::Error> {
-    write!(
-        f,
-        "{util}: {error}\n{util}: Try '{util} --help' for more information.",
-    )
+pub fn format_error_test<T: Error>(executable: &Executable, error: &T) -> String {
+    format!("{executable}: {error}\n{executable}: Try '{executable} --help' for more information.",)
 }
 
 /// Returns the standardized version text for this utility.
@@ -211,64 +202,9 @@ pub enum OptionNameTypeUsed {
     ShortName,
 }
 
-/// Contains all parser errors and their text messages.
-/// Additionally the identified util or executable.
-///
-/// The ArgParser reads all the options, including the executable.
-/// If an Err is raised, the name of the executable is lost to the caller,
-/// therefore it is stored in this error struct.
-///
-/// All errors can be output easily using the normal Display functionality.
-/// To format the error message for the typical diffutils output, use [write_err].
-#[derive(Debug, PartialEq)]
-pub struct ArgParserErrorCtx {
-    pub util: Executable,
-    // pub param_os: OsString,
-    // pub name_type_used: OptionNameTypeUsed,
-    pub error: ArgParserError,
-}
-
-impl Error for ArgParserErrorCtx {}
-
-impl Display for ArgParserErrorCtx {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.error)
-    }
-}
-
-/// Contains all parser errors and their text messages.
-#[derive(Debug, PartialEq)]
-pub enum ArgParserError {
-    ParserError(ParseError),
-    /// 'executable' as first parameter missing.
-    NoExecutable,
-    /// 'executable' (e.g. cmp) but no args for it
-    NoOperand(Executable),
-}
-
-impl From<ParseError> for ArgParserError {
-    fn from(e: ParseError) -> Self {
-        Self::ParserError(e)
-    }
-}
-
-impl Display for ArgParserError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self {
-            ArgParserError::ParserError(e) => write!(f, "{e}"),
-
-            ArgParserError::NoExecutable => {
-                write!(f, "Expected utility name as second argument, got nothing.")
-            }
-
-            ArgParserError::NoOperand(exe) => {
-                write!(f, "{}", &format!("missing operand after '{exe}'"))
-            }
-        }
-    }
-}
-
-/// This is a generic parser for program arguments (operands and options).
+/// This is a generic parser for program arguments (operands and options),
+/// but without the executable.
+/// TODO rewrite doc
 ///
 /// This generic parser is able to parse the options of all diffutils, e.g. 'cmp --options' or 'diff --options'. \
 /// The allowed options are passed as a list of static [AppOption]s, as they are known at compile time.
@@ -295,237 +231,6 @@ impl Display for ArgParserError {
 ///     }
 /// };
 /// ```
-#[derive(Debug)]
-pub struct ArgParser {
-    pub executable: Executable,
-    pub options_parsed: Vec<ParsedOption>,
-    pub operands: Vec<OsString>,
-}
-
-impl ArgParser {
-    /// Parse the given args and return lists for the operands and options with their args.
-    ///
-    /// # Arguments
-    /// * app_options: A list of [AppOption]s which contain the allowed values.
-    /// * args: a peekable iterator of the [std::env::ArgsOs].
-    ///
-    /// Expects the executable as first parameter.
-    /// If these are only the options, use [Parser] instead.
-    ///
-    /// # Returns
-    /// * Ok: [ArgParser], containing the parsed options and operands.
-    /// * Err: for anything regarding missing, unclear or false options
-    pub fn parse_params<I: Iterator<Item = OsString>>(
-        app_options: &'static [AppOption],
-        mut args: Peekable<I>,
-    ) -> ResultArgParser {
-        // No executable: This should happen here, it is an error of the main before calling this module.
-        let Some(executable) = Executable::from_args_os(&mut args, true) else {
-            return Err(ParseError::NoExecutable);
-        };
-
-        // create parser
-        // let mut arg_parser = Self {
-        //     executable,
-        //     options_parsed: Vec::new(),
-        //     operands: Vec::new(),
-        // };
-
-        // parse args
-        let p = Parser::parse_params(app_options, args)?;
-        Ok(Self {
-            executable,
-            options_parsed: p.options_parsed,
-            operands: p.operands,
-        })
-        //             _ => ArgParserErrorCtx {
-        //                 util: arg_parser.executable.clone(),
-        //                 // param_os: self.param_os.clone(),
-        //                 // name_type_used: self.name_type_used,
-        //                 error: e.into(),
-        //  {
-        //     Ok(parser) => {
-        //         arg_parser.options_parsed = parser.options_parsed;
-        //         arg_parser.operands = parser.operands;
-        //         Ok(arg_parser)
-        //     }
-        //     Err(e) => {
-        //         Err(match e {
-        //             ParseError::NoOperands(_) => ParseError::NoOperands(executable),
-        //             _ => ArgParserErrorCtx {
-        //                 util: arg_parser.executable.clone(),
-        //                 // param_os: self.param_os.clone(),
-        //                 // name_type_used: self.name_type_used,
-        //                 error: e.into(),
-        //             },
-        //         })
-        //     }
-        // }
-    }
-
-    /// Returns the standardized version text for this utility.
-    #[allow(unused)]
-    pub fn get_version_text(&self) -> String {
-        format!("{} {TEXT_VERSION_BASE}", self.executable)
-    }
-
-    /// Check if user requested the --help output.
-    #[allow(unused)]
-    pub fn is_help(&self) -> bool {
-        self.options_parsed
-            .iter()
-            .any(|opt| *opt.app_option == OPT_HELP)
-    }
-
-    /// Check if user requested the --version output.
-    #[allow(unused)]
-    pub fn is_version(&self) -> bool {
-        self.options_parsed
-            .iter()
-            .any(|opt| *opt.app_option == OPT_VERSION)
-    }
-
-    // pub fn write_err<T: Error>(
-    //     &self,
-    //     f: &mut std::fmt::Formatter<'_>,
-    //     error: &T,
-    // ) -> Result<(), std::fmt::Error> {
-    //     write_err(f, &self.util, error)
-    // }
-}
-
-/// Contains all parser errors and their text messages.
-///
-/// First argument is always the exe name ('cmp'). \
-#[derive(Debug, PartialEq)]
-pub enum ParseError {
-    /// When the long option is abbreviated, but does not have a unique match.
-    /// (ambiguous option, possible options)
-    AmbiguousOption(OsString, Vec<&'static AppOption>),
-
-    /// 'executable': option '--silent' doesn't allow an argument
-    /// (wrong option)
-    ArgForOptionNotAllowed(ParsedOption),
-
-    /// (option, short or long name used)
-    ArgForOptionMissing(ParsedOption),
-
-    /// Having more operands than allowed (usually 2)
-    /// (wrong operand)
-    ExtraOperand(String),
-
-    /// number for an option argument incorrect
-    InvalidNumber(ParsedOption),
-
-    /// Non-existent single dash option.
-    /// (unidentified option)
-    InvalidOption(OsString),
-
-    /// 'executable' as first parameter missing.
-    NoExecutable,
-
-    /// no args for the actual utility given
-    NoOperands(Executable),
-
-    /// Parsed option is not in unicode.
-    /// Since Rust cannot split OsString on Non-Linux Systems,
-    /// it can accept the argument for an option only as
-    /// separate arg (--regex someRegex).
-    NoUnicode(OsString),
-
-    /// Non-existent long option. This is "unrecognized" because the name can be abbreviated.
-    /// (unrecognized option)
-    UnrecognizedOption(OsString),
-}
-
-impl Display for ParseError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self {
-            ParseError::AmbiguousOption(param, possible_opts) => {
-                // create list of possible options
-                let mut list = Vec::new();
-                for opt in possible_opts {
-                    list.push("'--".to_string() + opt.long_name + "'");
-                }
-                write!(
-                    f,
-                    "option '{}' is ambiguous; possibilities: {}",
-                    param.to_string_lossy(),
-                    list.join(" ")
-                )
-            }
-
-            ParseError::ArgForOptionNotAllowed(opt) => write!(
-                f,
-                "option '{}' doesn't allow an argument",
-                opt.app_option.long_name
-            ),
-
-            ParseError::ArgForOptionMissing(opt) => {
-                write!(
-                    f,
-                    "option '--{}'{} requires an argument",
-                    opt.app_option.long_name,
-                    opt.short_char_or_empty_string()
-                )
-            }
-
-            ParseError::ExtraOperand(opt) => write!(f, "extra operand '{opt}'"),
-
-            ParseError::InvalidNumber(opt) => write!(
-                f,
-                "invalid argument '{}' for '--{}'{}",
-                opt.arg_for_option_or_empty_string(),
-                opt.app_option.long_name,
-                opt.short_char_or_empty_string(),
-            ),
-
-            ParseError::InvalidOption(param) => {
-                write!(
-                    f,
-                    "{}",
-                    &format!("invalid option '{}'", param.to_string_lossy())
-                )
-            }
-
-            ParseError::NoExecutable => {
-                write!(f, "Expected utility name as second argument, got nothing.")
-            }
-
-            ParseError::NoOperands(exe) => {
-                write!(f, "missing operand after '{exe}'")
-            }
-
-            ParseError::NoUnicode(os) => {
-                let mut s = OsString::from("Cannot parse non-unicode '");
-                s.push(os);
-                s.push(OsString::from(
-                    "'. Separate the argument from the option, e.g. '--from-file argument' instead '--from-file=argument'",
-                ));
-                write!(f, "Expected utility name as second argument, got nothing.")
-            }
-
-            ParseError::UnrecognizedOption(param) => {
-                write!(
-                    f,
-                    "{}",
-                    &format!("unrecognized option '{}'", param.to_string_lossy())
-                )
-            }
-        }
-    }
-}
-
-#[allow(unused)] // required for cmp
-pub enum ParseNumberError {
-    NoValue,
-    PosOverflow,
-    InvalidNumber,
-    InvalidUnit,
-}
-
-/// This is a generic parser for program arguments (operands and options),
-/// but without the executable.
 #[derive(Debug, Default)]
 pub struct Parser {
     pub options_parsed: Vec<ParsedOption>,
@@ -535,8 +240,12 @@ pub struct Parser {
 }
 
 impl Parser {
-    /// Parse the args into options.
-    /// It is identical to [ArgParser] only the arguments must not contain the executable.
+    /// Parse the args into operands and options for the utility.
+    ///
+    /// The arguments must not contain the executable.
+    ///
+    /// # Returns
+    /// TODO doc
     pub fn parse_params<I: Iterator<Item = OsString>>(
         app_options: &'static [AppOption],
         mut args: Peekable<I>,
@@ -752,6 +461,126 @@ impl Parser {
     }
 }
 
+/// Contains all parser errors and their text messages.
+///
+/// All errors can be output easily using the normal Display functionality.
+/// To format the error message for the typical diffutils output, use [write_err].
+#[derive(Debug, PartialEq)]
+pub enum ParseError {
+    /// When the long option is abbreviated, but does not have a unique match.
+    /// (ambiguous option, possible options)
+    AmbiguousOption(OsString, Vec<&'static AppOption>),
+
+    /// 'executable': option '--silent' doesn't allow an argument
+    /// (wrong option)
+    ArgForOptionNotAllowed(ParsedOption),
+
+    /// (option, short or long name used)
+    ArgForOptionMissing(ParsedOption),
+
+    /// Having more operands than allowed (usually 2)
+    /// (wrong operand)
+    ExtraOperand(String),
+
+    /// number for an option argument incorrect
+    InvalidNumber(ParsedOption),
+
+    /// Non-existent single dash option.
+    /// (unidentified option)
+    InvalidOption(OsString),
+
+    /// 'executable' as first parameter missing.
+    #[allow(unused)] // Allow usage for main function so all parsing errors are covered.
+    NoExecutable,
+
+    /// no args for the actual utility given
+    NoOperands(Executable),
+
+    /// Parsed option is not in unicode.
+    /// Since Rust cannot split OsString on Non-Linux Systems,
+    /// it can accept the argument for an option only as
+    /// separate arg (--regex someRegex).
+    NoUnicode(OsString),
+
+    /// Non-existent long option. This is "unrecognized" because the name can be abbreviated.
+    /// (unrecognized option)
+    UnrecognizedOption(OsString),
+
+    NotYetImplemented(String),
+}
+
+impl Display for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self {
+            ParseError::AmbiguousOption(param, possible_opts) => {
+                // create list of possible options
+                let mut list = Vec::new();
+                for opt in possible_opts {
+                    list.push("'--".to_string() + opt.long_name + "'");
+                }
+                write!(
+                    f,
+                    "option '{}' is ambiguous; possibilities: {}",
+                    param.to_string_lossy(),
+                    list.join(" ")
+                )
+            }
+            ParseError::ArgForOptionNotAllowed(opt) => write!(
+                f,
+                "option '{}' doesn't allow an argument",
+                opt.app_option.long_name
+            ),
+            ParseError::ArgForOptionMissing(opt) => {
+                write!(
+                    f,
+                    "option '--{}'{} requires an argument",
+                    opt.app_option.long_name,
+                    opt.short_char_or_empty_string()
+                )
+            }
+            ParseError::ExtraOperand(opt) => write!(f, "extra operand '{opt}'"),
+            ParseError::InvalidNumber(opt) => write!(
+                f,
+                "invalid argument '{}' for '--{}'{}",
+                opt.arg_for_option_or_empty_string(),
+                opt.app_option.long_name,
+                opt.short_char_or_empty_string(),
+            ),
+            ParseError::InvalidOption(param) => {
+                write!(
+                    f,
+                    "{}",
+                    &format!("invalid option '{}'", param.to_string_lossy())
+                )
+            }
+            ParseError::NoExecutable => {
+                write!(f, "Expected utility name as second argument, got nothing.")
+            }
+            ParseError::NoOperands(exe) => {
+                write!(f, "missing operand after '{exe}'")
+            }
+            ParseError::NoUnicode(os) => {
+                let mut s = OsString::from("Cannot parse non-unicode '");
+                s.push(os);
+                s.push(OsString::from(
+                    "'. Separate the argument from the option, e.g. '--from-file argument' instead '--from-file=argument'",
+                ));
+                write!(f, "Expected utility name as second argument, got nothing.")
+            }
+            ParseError::UnrecognizedOption(param) => {
+                write!(
+                    f,
+                    "{}",
+                    &format!("unrecognized option '{}'", param.to_string_lossy())
+                )
+            }
+            ParseError::NotYetImplemented(param) => {
+                write!(f, "{}", &format!("not yet implemented: option {param}"))
+            }
+        }
+    }
+}
+
 struct NumberParser {}
 
 impl NumberParser {
@@ -864,14 +693,10 @@ impl NumberParser {
 
             // Everything above EiB cannot fit into u64.
             // GNU cmp just returns an invalid bytes value
-            #[cfg(feature = "cmp_bytes_limit_128_bit")]
-            "zb" => 1_000_000_000_000_000_000_000,
-            #[cfg(feature = "cmp_bytes_limit_128_bit")]
-            "z" | "zib" => 1_180_591_620_717_411_303_424,
-            #[cfg(feature = "cmp_bytes_limit_128_bit")]
-            "yb" => 1_000_000_000_000_000_000_000_000,
-            #[cfg(feature = "cmp_bytes_limit_128_bit")]
-            "y" | "yib" => 1_208_925_819_614_629_174_706_176,
+            // "zb" => 1_000_000_000_000_000_000_000,
+            // "z" | "zib" => 1_180_591_620_717_411_303_424,
+            // "yb" => 1_000_000_000_000_000_000_000_000,
+            // "y" | "yib" => 1_208_925_819_614_629_174_706_176,
             _ => {
                 return Err(ParseNumberError::InvalidUnit);
             }
@@ -879,6 +704,14 @@ impl NumberParser {
 
         Ok(multiplier)
     }
+}
+
+#[allow(unused)] // required for cmp
+pub enum ParseNumberError {
+    NoValue,
+    PosOverflow,
+    InvalidNumber,
+    InvalidUnit,
 }
 
 /// Differentiates the utilities included in DiffUtil
@@ -928,7 +761,7 @@ impl Executable {
         if move_iter {
             args.next().map(|exe| Self::from(&exe))
         } else {
-            args.peek().map(|exe| Self::from(exe))
+            args.peek().map(Self::from)
         }
     }
 }

@@ -91,7 +91,8 @@ pub fn main(mut args: Peekable<ArgsOs>) -> ExitCode {
             }
         },
         Err(e) => {
-            eprintln!("{e}");
+            let msg = arg_parser::format_error_test(&executable, &e);
+            eprintln!("{msg}");
             ExitCode::from(2)
         }
     }
@@ -110,7 +111,7 @@ pub fn sdiff<I: Iterator<Item = OsString>>(
     args: Peekable<I>,
 ) -> ResultSdiff {
     // read params
-    let params = match ParamsSDiff::parse_params(&executable, args) {
+    let params = match ParamsSDiff::parse_params(executable, args) {
         Ok(res) => match res {
             SDiffParseOk::ParamsSdiff(p) => p,
             SDiffParseOk::Help => return Ok(SDiffOk::Help),
@@ -135,6 +136,7 @@ pub fn sdiff_compare(params: &ParamsSDiff) -> Result<SDiffOk, SDiffError> {
     if utils::is_same_file(&params.from, &params.to) {
         return Ok(SDiffOk::Equal);
     }
+
     let (from_content, to_content) = match utils::read_both_files(&params.from, &params.to) {
         Ok(contents) => contents,
         // Err((filepath, error)) => {
@@ -165,6 +167,7 @@ pub fn sdiff_compare(params: &ParamsSDiff) -> Result<SDiffOk, SDiffError> {
 ///
 /// To centralize error messages and make it easier to use in a lib.
 #[derive(Debug, PartialEq)]
+#[allow(clippy::enum_variant_names)]
 pub enum SDiffError {
     // parse errors
     ParseError(ParseError),
@@ -174,6 +177,8 @@ pub enum SDiffError {
     // (msg)
     ReadFileError(String),
 }
+
+impl std::error::Error for SDiffError {}
 
 impl From<ParseError> for SDiffError {
     fn from(e: ParseError) -> Self {
