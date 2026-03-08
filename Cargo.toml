@@ -46,7 +46,7 @@ inherits = "release"
 lto = "thin"
 
 [features]
-default = ["feat_bench_not_cmp"]
+# default = ["feat_bench_not_cmp"]
 # default = ["allow_case_insensitive_byte_units"]
 # instead of limiting to KiB, MiB, etc, one can write kib, mib, Mb or whatever case.
 allow_case_insensitive_byte_units = []
@@ -55,10 +55,10 @@ feat_bench_not_cmp = []
 # Turn bench for diffutils diff off
 feat_bench_not_diff = []
 
-# [[bench]]
-# name = "bench_divan"
-# path = "benches/bench-diffutils.rs"
-# harness = false
+[[bench]]
+name = "bench_divan"
+path = "benches/bench-diffutils.rs"
+harness = false
 
 # [[bench]]
 # name = "bench_criterion"

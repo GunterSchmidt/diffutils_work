@@ -97,4 +97,5 @@ Exit status is 0 if inputs are the same, 1 if different, 2 if trouble.
 
 Report bugs to: bug-diffutils@gnu.org
 GNU diffutils home page: <https://www.gnu.org/software/diffutils/>
-General help using GNU software: <https://www.gnu.org/gethelp/>
+General help using GNU software: <https://ww# instead of limiting to KiB, MiB, etc, one can write kib, mib, Mb or whatever case.
+w.gnu.org/gethelp/>

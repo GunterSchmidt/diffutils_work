@@ -187,6 +187,23 @@ fn parse_to_app_options(lines: &[String]) -> String {
         opts.len()
     ));
     for opt in opts.iter() {
+        content.push_str("    ");
+        content.push_str(&opt.option);
+        content.push_str(",\n");
+    }
+    content.push_str("];\n");
+
+    // create the not yet implemented array
+    content.push_str("\n// Array for not yet implemented options\n");
+    content.push_str(&format!(
+        "pub const NOT_YET_IMPLEMENTED: [AppOption; {}] = [\n",
+        opts.len() - 2
+    ));
+    for opt in opts
+        .iter()
+        .filter(|o| o.long_name != "help" && o.long_name != "version")
+    {
+        content.push_str("    ");
         content.push_str(&opt.option);
         content.push_str(",\n");
     }
@@ -196,9 +213,7 @@ fn parse_to_app_options(lines: &[String]) -> String {
     content.push_str("\n// The Param struct\n");
     content.push_str("#[derive(Debug, Clone, Eq, PartialEq)]\n");
     content.push_str("pub struct ParamsXxx {\n");
-    content.push_str("    /// Identifier\n");
-    content.push_str("    pub util: Executable,\n");
-    content.push_str("    // pub executable: OsString,\n");
+    content.push_str("    pub executable: Executable,\n");
     content.push_str("    pub from: OsString,\n");
     content.push_str("    pub to: OsString,\n");
     for opt in opts.iter() {
@@ -226,12 +241,7 @@ fn parse_to_app_options(lines: &[String]) -> String {
 
     content.push_str("\n// match for ArgParser output\n");
     content.push_str("fn try_from(parser: &ArgParser) -> ResultParamsXxxParse {\n");
-    content.push_str("    let mut params = Self::default();\n");
-    content.push_str("    //  {\n");
-    content.push_str("    //     // executable: parser.executable.clone(),\n");
-    content.push_str("    //     ..Default::default()\n");
-    content.push_str("    // };\n");
-    content.push_str("\n");
+    content.push_str("    let mut params = Self::default();\n\n");
     content.push_str("    // set options\n");
     content.push_str("    for parsed_option in &parser.options_parsed {\n");
     content.push_str("        dbg!(parsed_option);\n");
@@ -260,7 +270,7 @@ fn parse_to_app_options(lines: &[String]) -> String {
     content.push_str("        }\n");
     content.push_str("    }\n");
     content.push_str("}\n");
-    content.push_str("}\n");
+    // content.push_str("}\n");
 
     //     content.push_str("\n// From function for your parser\n");
     //     content.push_str("impl From<&ParsedOption> for <ParamXxx> {\n");

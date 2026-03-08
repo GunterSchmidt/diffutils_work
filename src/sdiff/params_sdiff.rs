@@ -9,7 +9,7 @@
 use std::{ffi::OsString, iter::Peekable};
 
 use crate::arg_parser::{
-    AppOption, Executable, ParseError, ParsedOption, Parser, OPT_HELP, OPT_VERSION,
+    is_implemented, AppOption, Executable, ParseError, ParsedOption, Parser, OPT_HELP, OPT_VERSION,
 };
 
 // use crate::{
@@ -154,17 +154,18 @@ pub const NOT_YET_IMPLEMENTED: [AppOption; 15] = [
     OPT_TEXT,
 ];
 
-/// Success return type for parsing of params.
+/// Parser Result Ok Enum with Params.
 ///
-/// Successful parsing will return ParamsSdiff, \
-/// '-- help' und '--version' will return the text as Enum value, \
-/// Error will be returned as [ParamsSdiffError] in the function Result.
+/// # Returns
+/// * Params in normal cases
+/// * Just Help or Version when these are requested as the params are then not relevant.
+///
+/// Error will be returned as [ParseError] in the function Result Error.
 #[derive(Debug, PartialEq)]
 pub enum SDiffParseOk {
-    ParamsSdiff(ParamsSDiff),
+    Params(ParamsSDiff),
     Help,
     Version,
-    // Info(String),
 }
 
 /// Holds the given command line arguments except "--version" and "--help".
@@ -216,6 +217,36 @@ pub struct ParamsSDiff {
     pub width: usize,
 }
 
+impl Default for ParamsSDiff {
+    fn default() -> Self {
+        Self {
+            executable: Executable::SDiff,
+            from: Default::default(),
+            to: Default::default(),
+            diff_program: Default::default(),
+            expand_tabs: Default::default(),
+            help: Default::default(),
+            ignore_all_space: Default::default(),
+            ignore_blank_lines: Default::default(),
+            ignore_case: Default::default(),
+            ignore_matching_lines: Default::default(),
+            ignore_space_change: Default::default(),
+            ignore_tab_expansion: Default::default(),
+            ignore_trailing_space: Default::default(),
+            left_column: Default::default(),
+            minimal: Default::default(),
+            output: Default::default(),
+            speed_large_files: Default::default(),
+            strip_trailing_cr: Default::default(),
+            suppress_common_lines: Default::default(),
+            tabsize: 8,
+            text: Default::default(),
+            version: Default::default(),
+            width: 130,
+        }
+    }
+}
+
 impl ParamsSDiff {
     /// Parses the program arguments.
     ///
@@ -224,33 +255,11 @@ impl ParamsSDiff {
         executable: &Executable,
         args: Peekable<I>,
     ) -> ResultSdiffParse {
-        let parser = match Parser::parse_params(&ARG_OPTIONS, args) {
-            Ok(p) => p,
-            Err(e) => {
-                return match e {
-                    ParseError::NoOperands(_) => Err(ParseError::NoOperands(executable.clone())),
-                    _ => Err(e),
-                }
-            }
-        };
+        let parser = Parser::parse_params(&ARG_OPTIONS, args)?;
 
         // check implemented options
-        if let Some(not_yet) = parser
-            .options_parsed
-            .iter()
-            .find(|o| NOT_YET_IMPLEMENTED.contains(o.app_option))
-        {
-            return Err(ParseError::NotYetImplemented(format!(
-                "'--{}' (-{})",
-                not_yet.app_option.long_name,
-                not_yet.app_option.short.unwrap_or(' ')
-            )));
-        }
+        is_implemented(&parser.options_parsed, &NOT_YET_IMPLEMENTED)?;
 
-        Self::try_from(executable, &parser)
-    }
-
-    fn try_from(executable: &Executable, parser: &Parser) -> ResultSdiffParse {
         let mut params = Self {
             executable: executable.clone(),
             ..Default::default()
@@ -314,14 +323,14 @@ impl ParamsSDiff {
         }
 
         // dbg!(&params);
-        Ok(SDiffParseOk::ParamsSdiff(params))
+        Ok(SDiffParseOk::Params(params))
     }
 
     pub fn set_tabsize(&mut self, parsed_option: &ParsedOption) -> Result<usize, ParseError> {
         let tab_size = parsed_option.arg_for_option.clone().unwrap_or_default();
         let t = match tab_size.parse::<usize>() {
             Ok(w) => w,
-            Err(_) => return Err(ParseError::InvalidNumber(parsed_option.clone())),
+            Err(_) => return Err(ParseError::InvalidValueNumber(parsed_option.clone())),
         };
         self.tabsize = t;
 
@@ -332,41 +341,11 @@ impl ParamsSDiff {
         let width = parsed_option.arg_for_option.clone().unwrap_or_default();
         let w = match width.parse::<usize>() {
             Ok(w) => w,
-            Err(_) => return Err(ParseError::InvalidNumber(parsed_option.clone())),
+            Err(_) => return Err(ParseError::InvalidValueNumber(parsed_option.clone())),
         };
         self.width = w;
 
         Ok(w)
-    }
-}
-
-impl Default for ParamsSDiff {
-    fn default() -> Self {
-        Self {
-            executable: Executable::SDiff,
-            from: Default::default(),
-            to: Default::default(),
-            diff_program: Default::default(),
-            expand_tabs: Default::default(),
-            help: Default::default(),
-            ignore_all_space: Default::default(),
-            ignore_blank_lines: Default::default(),
-            ignore_case: Default::default(),
-            ignore_matching_lines: Default::default(),
-            ignore_space_change: Default::default(),
-            ignore_tab_expansion: Default::default(),
-            ignore_trailing_space: Default::default(),
-            left_column: Default::default(),
-            minimal: Default::default(),
-            output: Default::default(),
-            speed_large_files: Default::default(),
-            strip_trailing_cr: Default::default(),
-            suppress_common_lines: Default::default(),
-            tabsize: 8,
-            text: Default::default(),
-            version: Default::default(),
-            width: 130,
-        }
     }
 }
 
@@ -386,14 +365,14 @@ mod tests {
             o.push(os(arg));
         }
         let mut p = o.into_iter().peekable();
-        // remove sdiff
+        // remove executable
         let executable = Executable::from_args_os(&mut p, true).unwrap();
 
         ParamsSDiff::parse_params(&executable, p)
     }
 
     fn res_ok(params: ParamsSDiff) -> ResultSdiffParse {
-        Ok(SDiffParseOk::ParamsSdiff(params))
+        Ok(SDiffParseOk::Params(params))
     }
 
     #[test]

@@ -9,19 +9,19 @@ pub mod params_sdiff;
 use std::{
     env::ArgsOs,
     ffi::OsString,
-    fmt::Display,
     io::{stdout, Write},
     iter::Peekable,
     process::ExitCode,
 };
 
 use crate::{
-    arg_parser::{self, add_copyright, Executable, ParseError, TEXT_HELP_FOOTER},
+    arg_parser::{
+        add_copyright, format_error_test, get_version_text, Executable, ParseError,
+        TEXT_HELP_FOOTER,
+    },
     sdiff::params_sdiff::{ParamsSDiff, SDiffParseOk},
     side_diff, utils,
 };
-
-pub type ResultSdiff = Result<SDiffOk, SDiffError>;
 
 // This contains the hard coded 'sdiff'. If required this needs to be replaced with the executable.
 pub const TEXT_HELP: &str = const_format::concatcp!(
@@ -69,13 +69,14 @@ pub const TEXT_HELP: &str = const_format::concatcp!(
 /// Param options, e.g. 'sdiff file1.txt file2.txt -bd n2000kB'. \
 /// sdiff options as documented in the GNU manual.
 ///
-/// Exit codes are documented at
-/// <https://www.gnu.org/software/diffutils/manual/html_node/Invoking-sdiff.html> \
-/// Exit status is 0 if inputs are identical, 1 if different, 2 in error case.
+/// Ends program with Exit Status:
+/// * 0 if inputs are identical
+/// * 1 if inputs are different
+/// * 2 in error case
 pub fn main(mut args: Peekable<ArgsOs>) -> ExitCode {
-    // I cannot think of a situation, where this is not an executable.
     let Some(executable) = Executable::from_args_os(&mut args, true) else {
-        todo!("execute")
+        eprintln!("Expected utility name as first argument, got nothing.");
+        return ExitCode::FAILURE;
     };
     match sdiff(&executable, args) {
         Ok(res) => match res {
@@ -86,12 +87,12 @@ pub fn main(mut args: Peekable<ArgsOs>) -> ExitCode {
                 ExitCode::SUCCESS
             }
             SDiffOk::Version => {
-                println!("{}", arg_parser::get_version_text(&executable));
+                println!("{}", get_version_text(&executable));
                 ExitCode::SUCCESS
             }
         },
         Err(e) => {
-            let msg = arg_parser::format_error_test(&executable, &e);
+            let msg = format_error_test(&executable, &e);
             eprintln!("{msg}");
             ExitCode::from(2)
         }
@@ -109,15 +110,12 @@ pub enum SDiffOk {
 pub fn sdiff<I: Iterator<Item = OsString>>(
     executable: &Executable,
     args: Peekable<I>,
-) -> ResultSdiff {
+) -> Result<SDiffOk, SDiffError> {
     // read params
-    let params = match ParamsSDiff::parse_params(executable, args) {
-        Ok(res) => match res {
-            SDiffParseOk::ParamsSdiff(p) => p,
-            SDiffParseOk::Help => return Ok(SDiffOk::Help),
-            SDiffParseOk::Version => return Ok(SDiffOk::Version),
-        },
-        Err(e) => return Err(e.into()),
+    let params = match ParamsSDiff::parse_params(executable, args)? {
+        SDiffParseOk::Params(p) => p,
+        SDiffParseOk::Help => return Ok(SDiffOk::Help),
+        SDiffParseOk::Version => return Ok(SDiffOk::Version),
     };
     // dbg!("{params:?}");
 
@@ -163,7 +161,7 @@ pub fn sdiff_compare(params: &ParamsSDiff) -> Result<SDiffOk, SDiffError> {
     }
 }
 
-/// Errors of core sdiff functionality.
+/// Errors for sdiff.
 ///
 /// To centralize error messages and make it easier to use in a lib.
 #[derive(Debug, PartialEq)]
@@ -186,7 +184,7 @@ impl From<ParseError> for SDiffError {
     }
 }
 
-impl Display for SDiffError {
+impl std::fmt::Display for SDiffError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let msg = match self {
             SDiffError::ParseError(e) => e.to_string(),

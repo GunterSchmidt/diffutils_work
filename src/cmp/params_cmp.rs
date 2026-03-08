@@ -2,35 +2,113 @@ use std::{ffi::OsString, iter::Peekable};
 
 use crate::{
     arg_parser::{
-        ArgParser, ArgParserError, Executable, OptionNameTypeUsed, ParsedOption, OPT_HELP,
-        OPT_VERSION,
+        is_implemented, AppOption, Executable, NumberParser, OptionNameTypeUsed, ParseError,
+        ParsedOption, Parser, OPT_HELP, OPT_VERSION,
     },
-    cmp::{params_cmp_def::*, BytesLimitU64, SkipU64},
+    cmp::{BytesLimitU64, SkipU64},
 };
 
-pub type ResultParamsCmpParse = Result<ParamsCmpOk, ParamsCmpError>;
+pub type ResultParamsCmpParse = Result<CmpParseOk, ParseError>;
+
+// -b, --print-bytes          print differing bytes
+// -i, --ignore-initial=SKIP         skip first SKIP bytes of both inputs
+// -i, --ignore-initial=SKIP1:SKIP2  skip first SKIP1 bytes of FILE1 and
+//                                     first SKIP2 bytes of FILE2
+// -l, --verbose              output byte numbers and differing byte values
+// -n, --bytes=LIMIT          compare at most LIMIT bytes
+// -s, --quiet, --silent      suppress all normal output
+//     --help                 display this help and exit
+// -v, --version              output version information and exit
+//   -b, --print-bytes          print differing bytes
+//   -i, --ignore-initial=SKIP         skip first SKIP bytes of both inputs
+//   -i, --ignore-initial=SKIP1:SKIP2  skip first SKIP1 bytes of FILE1 and
+//   -l, --verbose              output byte numbers and differing byte values
+//   -n, --bytes=LIMIT          compare at most LIMIT bytes
+//   -s, --quiet, --silent      suppress all normal output
+//       --help                 display this help and exit
+//   -v, --version              output version information and exit
+pub const OPT_BYTES_LIMIT: AppOption = AppOption {
+    long_name: "bytes",
+    short: Some('n'),
+    has_arg: true,
+};
+pub const OPT_IGNORE_INITIAL: AppOption = AppOption {
+    long_name: "ignore-initial",
+    short: Some('i'),
+    has_arg: true,
+};
+pub const OPT_PRINT_BYTES: AppOption = AppOption {
+    long_name: "print-bytes",
+    short: Some('b'),
+    has_arg: false,
+};
+pub const OPT_QUIET: AppOption = AppOption {
+    long_name: "quiet",
+    short: Some('s'),
+    has_arg: false,
+};
+pub const OPT_SILENT: AppOption = AppOption {
+    long_name: "silent",
+    short: Some('s'),
+    has_arg: false,
+};
+pub const OPT_VERBOSE: AppOption = AppOption {
+    long_name: "verbose",
+    short: Some('l'),
+    has_arg: false,
+};
+
+// must contain OPT_HELP,and OPT_VERSION
+pub const APP_OPTIONS: [AppOption; 8] = [
+    OPT_BYTES_LIMIT,
+    OPT_IGNORE_INITIAL,
+    OPT_PRINT_BYTES,
+    OPT_QUIET,
+    OPT_SILENT,
+    OPT_VERBOSE,
+    OPT_HELP,
+    OPT_VERSION,
+];
+
+// Array for not yet implemented options
+pub const NOT_YET_IMPLEMENTED: [AppOption; 6] = [
+    OPT_BYTES_LIMIT,
+    OPT_IGNORE_INITIAL,
+    OPT_IGNORE_INITIAL,
+    OPT_PRINT_BYTES,
+    OPT_QUIET,
+    OPT_VERBOSE,
+];
+
+/// Parser Result Ok Enum with Params.
+///
+/// # Returns
+/// * Params in normal cases
+/// * Just Help or Version when these are requested as the params are then not relevant.
+///
+/// Error will be returned as [ParseError] in the function Result Error.
+#[derive(Debug, PartialEq)]
+pub enum CmpParseOk {
+    Params(ParamsCmp),
+    Help,
+    Version,
+}
 
 /// Holds the given command line arguments except "--version" and "--help".
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ParamsCmp {
-    /// Identifier
-    pub util: Executable,
+    pub executable: Executable,
     // pub executable: OsString,
     pub from: OsString,
     pub to: OsString,
     /// -n, --bytes=LIMIT          compare at most LIMIT bytes
     /// cmp from diffutils has a limit of i64::MAX (9_223_372_036_854_775_807)
-    /// If None limit will be set to Bytes::MAX.
+    /// TODO This is wrong, or not?. If None limit will be set to Bytes::MAX.
     pub bytes_limit: Option<BytesLimitU64>,
-    // /// --help                     display this help and exit
-    // pub help: bool,
     /// -i, --ignore-initial=SKIP         skip first SKIP bytes of both inputs
-    /// If None will be set to 0.
-    // TODO remove option, replace with 0
-    // TODO replace skip with ign_init, rename back to skip
-    pub ignore_initial_bytes_from: Option<SkipU64>,
+    pub skip_bytes_from: SkipU64,
     /// -i, --ignore-initial=SKIP1:SKIP2  skip first SKIP1 bytes of FILE1 and
-    pub ignore_initial_bytes_to: Option<SkipU64>,
+    pub skip_bytes_to: SkipU64,
     /// -b, --print-bytes          print differing bytes
     pub print_bytes: bool,
     /// -s, --quiet, --silent      suppress all normal output \
@@ -39,19 +117,16 @@ pub struct ParamsCmp {
     /// -l, --verbose              output byte numbers and differing byte values \
     /// Do not set directly, use set_verbose().
     pub verbose: bool,
-    // /// -v, --version              output version information and exit \
-    // pub version: bool,
 }
 
 impl Default for ParamsCmp {
     fn default() -> Self {
         Self {
-            util: Executable::Cmp,
-            // executable: Default::default(),
+            executable: Executable::Cmp,
             from: Default::default(),
             to: Default::default(),
-            ignore_initial_bytes_from: Default::default(),
-            ignore_initial_bytes_to: Default::default(),
+            skip_bytes_from: Default::default(),
+            skip_bytes_to: Default::default(),
             bytes_limit: Default::default(),
             print_bytes: Default::default(),
             silent: Default::default(),
@@ -61,14 +136,19 @@ impl Default for ParamsCmp {
 }
 
 impl ParamsCmp {
-    pub fn parse_params<I: Iterator<Item = OsString>>(opts: Peekable<I>) -> ResultParamsCmpParse {
-        let parser = ArgParser::parse_params(&APP_OPTIONS, opts)?;
+    pub fn parse_params<I: Iterator<Item = OsString>>(
+        executable: &Executable,
+        args: Peekable<I>,
+    ) -> ResultParamsCmpParse {
+        let parser = Parser::parse_params(&APP_OPTIONS, args)?;
 
-        Self::try_from(&parser)
-    }
+        // check implemented options
+        is_implemented(&parser.options_parsed, &NOT_YET_IMPLEMENTED)?;
 
-    fn try_from(parser: &ArgParser) -> ResultParamsCmpParse {
-        let mut params = Self::default();
+        let mut params = Self {
+            executable: executable.clone(),
+            ..Default::default()
+        };
 
         // set options
         for parsed_option in &parser.options_parsed {
@@ -77,14 +157,14 @@ impl ParamsCmp {
                 OPT_BYTES_LIMIT => {
                     params.set_bytes_limit(parsed_option)?;
                 }
-                OPT_HELP => return Ok(ParamsCmpOk::Info(ArgParser::add_copyright(TEXT_HELP))),
+                OPT_HELP => return Ok(CmpParseOk::Help),
                 OPT_IGNORE_INITIAL => {
                     params.set_skip_bytes_files(parsed_option)?;
                 }
                 OPT_PRINT_BYTES => params.set_print_bytes()?,
                 OPT_QUIET | OPT_SILENT => params.set_silent()?,
                 OPT_VERBOSE => params.set_verbose()?,
-                OPT_VERSION => return Ok(ParamsCmpOk::Info(TEXT_VERSION.to_string())),
+                OPT_VERSION => return Ok(CmpParseOk::Version),
 
                 // This is not an error, but a todo. Unfortunately an Enum is not possible.
                 _ => todo!("Err Option: {}", parsed_option.app_option.long_name),
@@ -93,11 +173,7 @@ impl ParamsCmp {
 
         // set operands
         match parser.operands.len() {
-            0 => {
-                return Err(ParamsCmpError::ArgParserError(ArgParserError::NoOperand(
-                    params.util,
-                )))
-            }
+            0 => return Err(ParseError::NoOperands(executable.clone()).into()),
             // If only file_1 is set, then file_2 defaults to '-', so it reads from StandardInput.
             1 => {
                 params.from = parser.operands[0].clone();
@@ -107,32 +183,28 @@ impl ParamsCmp {
                 params.from = parser.operands[0].clone();
                 params.to = parser.operands[1].clone();
                 // ignore if ignore-initial is already set by option
-                if parser.operands.len() > 2 && params.ignore_initial_bytes_from.is_none() {
+                if parser.operands.len() > 2 && params.skip_bytes_from == 0 {
                     // normally [set_skip_bytes_file] would be used, but GNU cmp does not set the 2nd parameter if operand is used.
-                    params.set_skip_bytes_file_1(&ParsedOption {
-                        app_option: &OPT_IGNORE_INITIAL,
-                        arg_for_option: Some(parser.operands[2].to_string_lossy().to_string()),
-                        name_type_used: OptionNameTypeUsed::LongName,
-                    })?;
-                    if parser.operands.len() > 3 {
-                        params.set_skip_bytes_file_2(&ParsedOption {
-                            app_option: &OPT_IGNORE_INITIAL,
-                            arg_for_option: Some(parser.operands[3].to_string_lossy().to_string()),
-                            name_type_used: OptionNameTypeUsed::LongName,
-                        })?;
+                    params.set_skip_bytes_file_1(&ParsedOption::new(
+                        &OPT_IGNORE_INITIAL,
+                        parser.operands[2].clone(),
+                        OptionNameTypeUsed::LongName,
+                    ))?;
+                    // TODO should crash
+                    if let Some(skip) = parser.operands.get(3) {
+                        params.set_skip_bytes_file_2(&ParsedOption::new(
+                            &OPT_IGNORE_INITIAL,
+                            skip.clone(),
+                            OptionNameTypeUsed::LongName,
+                        ))?;
                     }
-                    // Alternative give Error
-                    // return Err(ParamsParseError::IgnoreInitialDouble(
-                    //     params.executable_str(),
-                    //     operands[2].to_string_lossy().to_string(),
-                    //     params.get_skip_bytes().to_string(),
-                    // ));
                 }
             }
             _ => {
-                return Err(ParamsCmpError::ExtraOperand(
+                return Err(ParseError::ExtraOperand(
                     parser.operands[4].to_string_lossy().to_string(),
-                ));
+                )
+                .into());
             }
         }
 
@@ -146,7 +218,7 @@ impl ParamsCmp {
         }
 
         // dbg!(&params);
-        Ok(ParamsCmpOk::ParamsCmp(params))
+        Ok(CmpParseOk::Params(params))
     }
 
     /// Sets the --bytes limit and returns the input as number.
@@ -155,38 +227,18 @@ impl ParamsCmp {
     pub fn set_bytes_limit(
         &mut self,
         parsed_option: &ParsedOption,
-    ) -> Result<BytesLimitU64, ParamsCmpError> {
-        match ArgParser::parse_bytes(parsed_option.arg_for_option.as_ref().expect("Logic error")) {
-            Ok(r) => {
-                self.bytes_limit = Some(r);
-                Ok(r)
-            }
-            Err(e) => Err(ParamsCmpError::from_parse_byte_error(e, parsed_option)),
-            // match e {
-            //     ParseBytesError::NoValue => Err(ParamsCmpError::ParseGenError(
-            //         ParamsGenParseError::ArgForOptionMissing(parsed_option.clone()),
-            //     )),
-            //     ParseBytesError::PosOverflow => {
-            //         Err(ParamsCmpError::BytesPosOverflow(parsed_option.clone()))
-            //     }
-            //     ParseBytesError::InvalidNumber => Err(ParamsCmpError::BytesInvalidNumber(
-            //         parsed_option.clone(),
-            //     )),
-            //     ParseBytesError::InvalidUnit => {
-            //         Err(ParamsCmpError::BytesInvalidUnit(parsed_option.clone()))
-            //     }
-            // },
-        }
+    ) -> Result<BytesLimitU64, ParseError> {
+        let num = NumberParser::parse_number(parsed_option)?;
+        self.bytes_limit = Some(num);
+        Ok(num)
     }
 
     /// Sets the ignore initial bytes for both files.
     ///
     /// Sets the 2nd file to the value of the 1st file if no second parameter is given. \
     /// Returns true if a value for the second file was given.
-    fn set_skip_bytes_files(
-        &mut self,
-        parsed_option: &ParsedOption,
-    ) -> Result<bool, ParamsCmpError> {
+    /// TODO double?
+    fn set_skip_bytes_files(&mut self, parsed_option: &ParsedOption) -> Result<bool, ParseError> {
         // if bytes.is_empty() {
         //     return Err(ParamsCmpError::ArgForOptionMissing(
         //         BytesType::IgnoreInitial,
@@ -228,7 +280,7 @@ impl ParamsCmp {
     pub fn set_skip_bytes_file_1(
         &mut self,
         parsed_option: &ParsedOption,
-    ) -> Result<SkipU64, ParamsCmpError> {
+    ) -> Result<SkipU64, ParseError> {
         self.set_skip_bytes_file_no(parsed_option, 1)
     }
 
@@ -238,13 +290,11 @@ impl ParamsCmp {
     pub fn set_skip_bytes_file_2(
         &mut self,
         parsed_option: &ParsedOption,
-    ) -> Result<SkipU64, ParamsCmpError> {
+    ) -> Result<SkipU64, ParseError> {
         self.set_skip_bytes_file_no(parsed_option, 2)
     }
 
     /// Sets the [Self::skip_bytes_file_1] value.
-    ///
-    /// * bytes - A valid number String, e.g. 1800 or 12KiB
     ///
     /// If calling this manually, set_skip_bytes_file_2 to the same value unless
     /// separate values are required.  
@@ -252,29 +302,24 @@ impl ParamsCmp {
         &mut self,
         parsed_option: &ParsedOption,
         file_no: i32,
-    ) -> Result<SkipU64, ParamsCmpError> {
-        match ArgParser::parse_bytes(
-            parsed_option
-                .arg_for_option
-                .as_ref()
-                .expect("Logic error, must have value."),
-        ) {
-            Ok(r) => {
-                match file_no {
-                    1 => self.ignore_initial_bytes_from = Some(r),
-                    2 => self.ignore_initial_bytes_to = Some(r),
-                    _ => panic!("Logic error."),
-                }
-                Ok(r)
-            }
-            Err(e) => Err(ParamsCmpError::from_parse_byte_error(e, parsed_option)),
+    ) -> Result<SkipU64, ParseError> {
+        let skip = NumberParser::parse_number(parsed_option)?;
+        match file_no {
+            1 => self.skip_bytes_from = skip,
+            2 => self.skip_bytes_to = skip,
+            _ => panic!("Logic error."),
         }
+
+        Ok(skip)
     }
 
-    pub fn set_print_bytes(&mut self) -> Result<(), ParamsCmpError> {
+    pub fn set_print_bytes(&mut self) -> Result<(), ParseError> {
         // Should actually raise an error if --silent is set, but GNU cmp does not do that.
         if self.silent {
-            Err(ParamsCmpError::SilentPrintBytesIncompatible)
+            Err(ParseError::OptionsIncompatible(
+                &OPT_SILENT,
+                &OPT_PRINT_BYTES,
+            ))
         } else {
             self.print_bytes = true;
 
@@ -282,11 +327,14 @@ impl ParamsCmp {
         }
     }
 
-    pub fn set_silent(&mut self) -> Result<(), ParamsCmpError> {
+    pub fn set_silent(&mut self) -> Result<(), ParseError> {
         if self.verbose {
-            Err(ParamsCmpError::SilentVerboseIncompatible)
+            Err(ParseError::OptionsIncompatible(&OPT_SILENT, &OPT_VERBOSE))
         } else if self.print_bytes {
-            Err(ParamsCmpError::SilentPrintBytesIncompatible)
+            Err(ParseError::OptionsIncompatible(
+                &OPT_SILENT,
+                &OPT_PRINT_BYTES,
+            ))
         } else {
             self.silent = true;
 
@@ -294,9 +342,9 @@ impl ParamsCmp {
         }
     }
 
-    pub fn set_verbose(&mut self) -> Result<(), ParamsCmpError> {
+    pub fn set_verbose(&mut self) -> Result<(), ParseError> {
         if self.silent {
-            Err(ParamsCmpError::SilentVerboseIncompatible)
+            Err(ParseError::OptionsIncompatible(&OPT_SILENT, &OPT_VERBOSE))
         } else {
             self.verbose = true;
 
@@ -304,6 +352,45 @@ impl ParamsCmp {
         }
     }
 }
+
+// /// Contains all parser errors and their text messages.
+// #[derive(Debug, PartialEq)]
+// pub enum CmpParseError {
+//     /// Bubbled up error
+//     ParseError(ParseError),
+//
+//     // /// Ignore Initial is given as extra operand and also as option. \
+//     // /// This is not an original GNU cmp error message, where the operands are ignored.
+//     // /// (3rd operand, 4th operand, --i value).
+//     // IgnoreInitialDouble(String, String, String),
+//     SilentPrintBytesIncompatible,
+//     SilentVerboseIncompatible,
+// }
+//
+// impl std::error::Error for CmpParseError {}
+//
+// impl From<ParseError> for CmpParseError {
+//     fn from(err: ParseError) -> Self {
+//         Self::ParseError(err)
+//     }
+// }
+//
+// impl std::fmt::Display for CmpParseError {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         // TODO different short and long name errors?
+//         let msg = match self {
+//             CmpParseError::ParseError(e) => return write!(f, "{e}"),
+//
+//             CmpParseError::SilentPrintBytesIncompatible => {
+//                 "options '--print-bytes' ('-b') and '--silent' ('-s') are incompatible"
+//             }
+//             CmpParseError::SilentVerboseIncompatible => {
+//                 "options '--verbose' ('-l') and '--silent' ('-s') are incompatible"
+//             }
+//         };
+//         write!(f, "{msg}")
+//     }
+// }
 
 // Usually assert is used like assert_eq(result, desired_result).
 #[cfg(test)]
@@ -324,13 +411,15 @@ mod tests {
         for arg in args.split(' ') {
             o.push(os(arg));
         }
-        let p = o.into_iter().peekable();
+        let mut p = o.into_iter().peekable();
+        // remove executable
+        let executable = Executable::from_args_os(&mut p, true).unwrap();
 
-        ParamsCmp::parse_params(p)
+        ParamsCmp::parse_params(&executable, p)
     }
 
     fn res_ok(params: ParamsCmp) -> ResultParamsCmpParse {
-        Ok(ParamsCmpOk::ParamsCmp(params))
+        Ok(CmpParseOk::Params(params))
     }
 
     #[test]
@@ -340,7 +429,7 @@ mod tests {
             parse("cmp foo bar"),
             res_ok(ParamsCmp {
                 // util: Executable::Cmp,
-                util: Executable::Cmp,
+                executable: Executable::Cmp,
                 from: os("foo"),
                 to: os("bar"),
                 ..Default::default()
@@ -351,7 +440,7 @@ mod tests {
         assert_eq!(
             parse("cmp foo"),
             res_ok(ParamsCmp {
-                util: Executable::Cmp,
+                executable: Executable::Cmp,
                 from: os("foo"),
                 to: os("-"),
                 ..Default::default()
@@ -362,7 +451,7 @@ mod tests {
         assert_eq!(
             parse("sdiff foo -- --help"),
             res_ok(ParamsCmp {
-                util: DiffUtilExe::SDiff,
+                executable: Executable::SDiff,
                 from: os("foo"),
                 to: os("--help"),
                 ..Default::default()
@@ -373,11 +462,11 @@ mod tests {
         assert_eq!(
             parse("cmp foo bar 1"),
             res_ok(ParamsCmp {
-                util: Executable::Cmp,
+                executable: Executable::Cmp,
                 from: os("foo"),
                 to: os("bar"),
-                ignore_initial_bytes_from: Some(1),
-                ignore_initial_bytes_to: None,
+                skip_bytes_from: 1,
+                skip_bytes_to: 0,
                 ..Default::default()
             }),
         );
@@ -397,27 +486,25 @@ mod tests {
         // );
 
         // Failure: --ignore-initial as operands with 1 2Y (which is greater than u64)
-        assert_eq!(
-            parse("cmp foo bar 1 2Y"),
-            Err(ParamsCmpError::BytesInvalidUnit(ParsedOption {
-                app_option: &OPT_IGNORE_INITIAL,
-                arg_for_option: Some("2Y".to_string()),
-                name_type_used: OptionNameTypeUsed::LongName
-            })),
-        );
+        let msg = "invalid '--ignore-initial' (-i) value '2Y'";
+        match parse("cmp foo bar 1 2Y") {
+            Ok(_) => assert!(false, "Should not be ok!"),
+            Err(e) => assert!(
+                e.to_string().contains(msg),
+                "error must contain: \"{msg}\"\nactual error: \"{e}\""
+            ),
+        }
 
         // Err: too many operands
         assert_eq!(
             parse("cmp foo bar 1 2 3"),
-            Err(ParamsCmpError::ExtraOperand("3".to_string())),
+            Err(ParseError::ExtraOperand("3".to_string()).into()),
         );
 
         // Err: no arguments
         assert_eq!(
             parse("cmp"),
-            Err(ParamsCmpError::ArgParserError(ArgParserError::NoOperand(
-                Executable::Cmp
-            )))
+            Err(ParseError::NoOperands(Executable::Cmp).into())
         );
     }
 
@@ -425,7 +512,7 @@ mod tests {
     fn execution_modes() {
         // --print-bytes
         let print_bytes = ParamsCmp {
-            util: Executable::Cmp,
+            executable: Executable::Cmp,
             from: os("foo"),
             to: os("bar"),
             print_bytes: true,
@@ -440,7 +527,7 @@ mod tests {
 
         // --verbose
         let verbose = ParamsCmp {
-            util: Executable::Cmp,
+            executable: Executable::Cmp,
             from: os("foo"),
             to: os("bar"),
             verbose: true,
@@ -453,12 +540,11 @@ mod tests {
         // --ver ambiguous
         assert_eq!(
             parse("cmp --ver foo bar"),
-            Err(ParamsCmpError::ArgParserError(
-                ArgParserError::AmbiguousOption(
-                    "--ver".to_string(),
-                    vec![&OPT_VERBOSE, &OPT_VERSION] // "'--verbose' '--version'".to_string()
-                )
-            )),
+            Err(ParseError::AmbiguousOption(
+                os("--ver"),
+                vec![&OPT_VERBOSE, &OPT_VERSION] // "'--verbose' '--version'".to_string()
+            )
+            .into()),
         );
         let r = parse("cmp --ver foo bar");
         match r {
@@ -470,7 +556,7 @@ mod tests {
 
         // --verbose & --print-bytes
         let verbose_and_print_bytes = ParamsCmp {
-            util: Executable::Cmp,
+            executable: Executable::Cmp,
             from: os("foo"),
             to: os("bar"),
             print_bytes: true,
@@ -500,7 +586,7 @@ mod tests {
 
         // --silent --quiet
         let silent = ParamsCmp {
-            util: Executable::Cmp,
+            executable: Executable::Cmp,
             from: os("foo"),
             to: os("bar"),
             silent: true,
@@ -510,16 +596,26 @@ mod tests {
         assert_eq!(parse("cmp --silent foo bar"), res_ok(silent.clone()));
         assert_eq!(parse("cmp --quiet foo bar"), res_ok(silent.clone()));
 
-        // Some options do not mix.
-        assert_eq!(
-            parse("cmp -l -s foo bar"),
-            Err(ParamsCmpError::SilentVerboseIncompatible),
-        );
+        // Options --silent and --verbose do not mix.
+        let msg = "missing operand after 'sdiff'";
+        match parse("cmp -l -s foo bar") {
+            Ok(_) => assert!(false, "Should not be ok!"),
+            Err(e) => assert!(
+                e.to_string().contains(msg),
+                "error must contain: \"{msg}\"\nactual error: \"{e}\""
+            ),
+        }
+
+        // Options --silent and --print-bytes do not mix.
         // This does not give an error in GNU cmp, but should.
-        assert_eq!(
-            parse("cmp -b -s foo bar"),
-            Err(ParamsCmpError::SilentPrintBytesIncompatible),
-        );
+        let msg = "missing operand after 'sdiff'";
+        match parse("cmp -b -s foo bar") {
+            Ok(_) => assert!(false, "Should not be ok!"),
+            Err(e) => assert!(
+                e.to_string().contains(msg),
+                "error must contain: \"{msg}\"\nactual error: \"{e}\""
+            ),
+        }
     }
 
     #[test]
@@ -533,7 +629,7 @@ mod tests {
     /// - cmp file_1 file_2 -bln1kiB
     fn bytes_limit() {
         let mut bytes_limit = ParamsCmp {
-            util: Executable::Cmp,
+            executable: Executable::Cmp,
             from: os("foo"),
             to: os("bar"),
             bytes_limit: Some(1000),
@@ -610,41 +706,32 @@ mod tests {
         assert_eq!(parse("cmp -n 1EiB foo bar"), res_ok(bytes_limit.clone()));
 
         // Failure cases
-        assert_eq!(
-            parse("cmp -n 1ZB foo bar"),
-            Err(ParamsCmpError::BytesInvalidUnit(ParsedOption::new(
-                &OPT_BYTES_LIMIT,
-                "1ZB".to_string(),
-                OptionNameTypeUsed::ShortName
-            )))
-        );
-        let r = parse("cmp -n 1ZB foo bar");
-        match r {
-            Ok(_) => assert!(false, "Should not be Ok."),
-            Err(e) => assert_eq!(
-                e.to_string(),
-                format!("cmp: invalid '--bytes' value '1ZB'\ncmp: {TEXT_HELP_HINT}")
+        let msg = "missing operand after 'sdiff'";
+        match parse("cmp -n 1ZB foo bar") {
+            Ok(_) => assert!(false, "Should not be ok!"),
+            Err(e) => assert!(
+                e.to_string().contains(msg),
+                "error must contain: \"{msg}\"\nactual error: \"{e}\""
             ),
         }
-
-        assert_eq!(
-            parse("cmp -n 99999999999999999999999999999999999999999999999999999999999 foo bar"),
-            Err(ParamsCmpError::BytesPosOverflow(ParsedOption::new(
-                &OPT_BYTES_LIMIT,
-                "99999999999999999999999999999999999999999999999999999999999".to_string(),
-                OptionNameTypeUsed::ShortName
-            )))
-        );
+        let msg = "missing operand after 'sdiff'";
+        match parse("cmp -n 99999999999999999999999999999999999999999999999999999999999 foo bar") {
+            Ok(_) => assert!(false, "Should not be ok!"),
+            Err(e) => assert!(
+                e.to_string().contains(msg),
+                "error must contain: \"{msg}\"\nactual error: \"{e}\""
+            ),
+        }
     }
 
     #[test]
     fn ignore_initial() {
         let mut skips = ParamsCmp {
-            util: Executable::Cmp,
+            executable: Executable::Cmp,
             from: os("foo"),
             to: os("bar"),
-            ignore_initial_bytes_from: Some(1),
-            ignore_initial_bytes_to: Some(1),
+            skip_bytes_from: 1,
+            skip_bytes_to: 1,
             ..Default::default()
         };
         assert_eq!(parse("cmp -i 1 foo bar"), res_ok(skips.clone()));
@@ -655,7 +742,7 @@ mod tests {
         assert_eq!(parse("cmp --ig 1 foo bar"), res_ok(skips.clone()));
 
         // 2nd value different
-        skips.ignore_initial_bytes_to = Some(2);
+        skips.skip_bytes_to = 2;
         assert_eq!(
             parse("cmp --ignore-initial=1:2 foo bar"),
             res_ok(skips.clone())
@@ -668,8 +755,8 @@ mod tests {
         );
 
         // large numbers
-        skips.ignore_initial_bytes_from = Some(1_000_000_000);
-        skips.ignore_initial_bytes_to = Some(2 * 1_152_921_504_606_846_976);
+        skips.skip_bytes_from = 1_000_000_000;
+        skips.skip_bytes_to = 2 * 1_152_921_504_606_846_976;
         assert_eq!(
             parse("cmp --ignore-initial=1GB:2E foo bar"),
             res_ok(skips.clone())
@@ -759,11 +846,11 @@ mod tests {
                 assert_eq!(
                     parse(&format!("cmp -i 1{}:2 foo bar", suffixes[j])),
                     res_ok(ParamsCmp {
-                        util: Executable::Cmp,
+                        executable: Executable::Cmp,
                         from: os("foo"),
                         to: os("bar"),
-                        ignore_initial_bytes_from: Some(*v),
-                        ignore_initial_bytes_to: Some(2),
+                        skip_bytes_from: *v,
+                        skip_bytes_to: 2,
                         ..Default::default()
                     }),
                 );

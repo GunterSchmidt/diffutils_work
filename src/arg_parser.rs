@@ -14,8 +14,6 @@ use std::{
     iter::Peekable,
 };
 
-type ResultParseNumber = Result<u64, ParseNumberError>;
-
 // TODO finalize copyright
 pub const TEXT_COPYRIGHT: &str = r#"Copyright (c) uutils developers
 Licenses: MIT License, Apache License 2.0 <https://www.apache.org/licenses/LICENSE-2.0>"#;
@@ -73,6 +71,26 @@ pub fn args_into_peekable_os_strings(args: &str) -> Peekable<std::vec::IntoIter<
     o.into_iter().peekable()
 }
 
+/// Check if the user selected an option which is not yet implemented.
+#[allow(unused)]
+pub fn is_implemented(
+    options_parsed: &[ParsedOption],
+    implemented_options: &[AppOption],
+) -> Result<(), ParseError> {
+    if let Some(not_yet) = options_parsed
+        .iter()
+        .find(|o| implemented_options.contains(o.app_option))
+    {
+        return Err(ParseError::NotYetImplemented(format!(
+            "'--{}' (-{})",
+            not_yet.app_option.long_name,
+            not_yet.app_option.short.unwrap_or(' ')
+        )));
+    }
+
+    Ok(())
+}
+
 /// This contains the args/options the app allows. They must be all of const value.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AppOption {
@@ -81,6 +99,38 @@ pub struct AppOption {
     pub short: Option<char>,
     pub has_arg: bool,
     // pub arg_default: Option<&'static str>,
+}
+
+impl AppOption {
+    /// formatted long option
+    ///
+    /// Returns the long name formatted: "'--option'".
+    pub fn format_long(&self) -> String {
+        format!("'--{}'", self.long_name)
+    }
+
+    /// formatted long and short option
+    ///
+    /// # Returns
+    /// * Some(short): "'--option' (-c)".
+    /// * None: [Self::format_long]
+    pub fn format_long_short(&self) -> String {
+        match self.short {
+            Some(c) => format!("'--{}' (-{c})", self.long_name),
+            None => self.format_long(),
+        }
+    }
+
+    /// formatted option char
+    ///
+    /// Returns the short char formatted: "-c" or an empty String if None.
+    #[allow(unused)]
+    pub fn short_or_empty(&self) -> String {
+        match self.short {
+            Some(c) => format!("-{c}"),
+            None => String::new(),
+        }
+    }
 }
 
 /// One parsed option.
@@ -164,14 +214,6 @@ impl ParsedOption {
     pub fn arg_for_option_or_empty_string(&self) -> String {
         match &self.arg_for_option {
             Some(s) => s.clone(),
-            None => String::new(),
-        }
-    }
-
-    /// Easy char conversion: returns the short char or an empty String if None.
-    pub fn short_char_or_empty_string(&self) -> String {
-        match self.app_option.short {
-            Some(c) => format!(" ('-{c}')"),
             None => String::new(),
         }
     }
@@ -482,12 +524,14 @@ pub enum ParseError {
     /// (wrong operand)
     ExtraOperand(String),
 
-    /// number for an option argument incorrect
-    InvalidNumber(ParsedOption),
-
     /// Non-existent single dash option.
     /// (unidentified option)
     InvalidOption(OsString),
+
+    /// number for an option argument incorrect
+    InvalidValueNumber(ParsedOption),
+    InvalidValueNumberUnit(ParsedOption),
+    InvalidValueNumberOverflow(ParsedOption),
 
     /// 'executable' as first parameter missing.
     #[allow(unused)] // Allow usage for main function so all parsing errors are covered.
@@ -502,6 +546,9 @@ pub enum ParseError {
     /// separate arg (--regex someRegex).
     NoUnicode(OsString),
 
+    /// Two options cannot be used together, e.g. cmp --silent and --verbose (output).
+    OptionsIncompatible(&'static AppOption, &'static AppOption),
+
     /// Non-existent long option. This is "unrecognized" because the name can be abbreviated.
     /// (unrecognized option)
     UnrecognizedOption(OsString),
@@ -511,12 +558,12 @@ pub enum ParseError {
 
 impl Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self {
+        match self {
             ParseError::AmbiguousOption(param, possible_opts) => {
                 // create list of possible options
                 let mut list = Vec::new();
                 for opt in possible_opts {
-                    list.push("'--".to_string() + opt.long_name + "'");
+                    list.push(opt.format_long());
                 }
                 write!(
                     f,
@@ -527,25 +574,37 @@ impl Display for ParseError {
             }
             ParseError::ArgForOptionNotAllowed(opt) => write!(
                 f,
-                "option '{}' doesn't allow an argument",
-                opt.app_option.long_name
+                "option {} doesn't allow an argument",
+                opt.app_option.format_long()
             ),
             ParseError::ArgForOptionMissing(opt) => {
                 write!(
                     f,
-                    "option '--{}'{} requires an argument",
-                    opt.app_option.long_name,
-                    opt.short_char_or_empty_string()
+                    "option {} requires an argument",
+                    opt.app_option.format_long_short(),
                 )
             }
             ParseError::ExtraOperand(opt) => write!(f, "extra operand '{opt}'"),
-            ParseError::InvalidNumber(opt) => write!(
-                f,
-                "invalid argument '{}' for '--{}'{}",
-                opt.arg_for_option_or_empty_string(),
-                opt.app_option.long_name,
-                opt.short_char_or_empty_string(),
-            ),
+            ParseError::InvalidValueNumber(opt) | ParseError::InvalidValueNumberUnit(opt) => {
+                write!(
+                    f,
+                    "invalid {} value '{}'",
+                    // "invalid argument '{}' for '--{}'{}",
+                    opt.app_option.format_long_short(),
+                    opt.arg_for_option_or_empty_string(),
+                    // opt.short_char_or_empty_string(),
+                )
+            }
+            ParseError::InvalidValueNumberOverflow(opt) => {
+                write!(
+                    f,
+                    "invalid '--{}' value '{}' (too large)",
+                    // "invalid argument '{}' for '--{}'{}",
+                    opt.app_option.long_name,
+                    opt.arg_for_option_or_empty_string(),
+                    // opt.short_char_or_empty_string(),
+                )
+            }
             ParseError::InvalidOption(param) => {
                 write!(
                     f,
@@ -567,6 +626,14 @@ impl Display for ParseError {
                 ));
                 write!(f, "Expected utility name as second argument, got nothing.")
             }
+            ParseError::OptionsIncompatible(op_1, op_2) => {
+                write!(
+                    f,
+                    "options {} and {} are incompatible",
+                    op_1.format_long_short(),
+                    op_2.format_long_short()
+                )
+            }
             ParseError::UnrecognizedOption(param) => {
                 write!(
                     f,
@@ -581,24 +648,31 @@ impl Display for ParseError {
     }
 }
 
-struct NumberParser {}
+pub struct NumberParser {}
 
 impl NumberParser {
-    /// Parses a number as defined in <https://www.gnu.org/software/diffutils/manual/html_node/cmp-Options.html>. \
-    /// e.g. 1024 or 1KiB
-    #[allow(unused)] // required for cmp
-    pub fn parse_number_with_unit(num_unit: &str) -> ResultParseNumber {
+    /// Parses a number with an optional unit, e.g. 10MiB.
+    ///
+    /// Follows <https://www.gnu.org/software/diffutils/manual/html_node/cmp-Options.html>.
+    pub fn parse_number(parsed_option: &ParsedOption) -> Result<u64, ParseError> {
+        let Some(num_unit) = &parsed_option.arg_for_option else {
+            return Err(ParseError::InvalidValueNumber(parsed_option.clone()));
+        };
         if num_unit.is_empty() {
-            return Err(ParseNumberError::NoValue);
+            return Err(ParseError::InvalidValueNumber(parsed_option.clone()));
         }
 
+        // split number and unit, parse unit
         let multiplier: u64;
         let n = match num_unit.find(|b: char| !b.is_ascii_digit()) {
             Some(pos) => {
                 if pos == 0 {
-                    return Err(ParseNumberError::InvalidNumber);
+                    return Err(ParseError::InvalidValueNumber(parsed_option.clone()));
                 }
-                multiplier = Self::parse_number_unit(&num_unit[pos..])?;
+                multiplier = match Self::parse_number_unit(&num_unit[pos..]) {
+                    Some(m) => m,
+                    None => return Err(ParseError::InvalidValueNumberUnit(parsed_option.clone())),
+                };
                 &num_unit[0..pos]
             }
             None => {
@@ -615,15 +689,17 @@ impl NumberParser {
                 } else {
                     match num.checked_mul(multiplier) {
                         Some(r) => Ok(r),
-                        None => Err(ParseNumberError::PosOverflow),
+                        None => Err(ParseError::InvalidValueNumberOverflow(
+                            parsed_option.clone(),
+                        )),
                     }
                 }
             }
             // This is an additional error message not present in GNU DiffUtils.
-            Err(e) if *e.kind() == std::num::IntErrorKind::PosOverflow => {
-                Err(ParseNumberError::PosOverflow)
-            }
-            Err(_) => Err(ParseNumberError::InvalidNumber),
+            Err(e) if *e.kind() == std::num::IntErrorKind::PosOverflow => Err(
+                ParseError::InvalidValueNumberOverflow(parsed_option.clone()),
+            ),
+            Err(_) => Err(ParseError::InvalidValueNumber(parsed_option.clone())),
         }
     }
 
@@ -631,13 +707,14 @@ impl NumberParser {
     /// which then can be used to calculate the final number of bytes.
     ///
     /// # Returns
-    /// A multiplier depending on the given unit, e.g. 'KiB' -> 1024.
+    /// A multiplier depending on the given unit, e.g. 'KiB' -> 1024
+    /// or None if unit could not be identified.
     ///
     /// Units up eo Exabyte (EiB) following GNU documentation: \
     /// <https://www.gnu.org/software/diffutils/manual/html_node/cmp-Options.html>.
     #[cfg(not(feature = "allow_case_insensitive_byte_units"))]
     #[allow(unused)] // required for cmp
-    pub fn parse_number_unit(unit: &str) -> ResultParseNumber {
+    pub fn parse_number_unit(unit: &str) -> Option<u64> {
         let multiplier = match unit {
             "kB" | "KB" => 1_000,
             "k" | "K" | "KiB" | "kiB" => 1_024,
@@ -660,16 +737,17 @@ impl NumberParser {
             // "YB" => 1_000_000_000_000_000_000_000_000,
             // "Y" | "YiB" => 1_208_925_819_614_629_174_706_176,
             _ => {
-                return Err(ParseNumberError::InvalidUnit);
+                return None;
             }
         };
 
-        Ok(multiplier)
+        Some(multiplier)
     }
 
     /// Returns a multiplier depending on the given unit, e.g. 'KiB' -> 1024,
     /// which then can be used to calculate the final number of bytes.
     /// Following GNU documentation: https://www.gnu.org/software/diffutils/manual/html_node/cmp-Options.html
+    /// TODO case
     #[cfg(feature = "allow_case_insensitive_byte_units")]
     pub fn parse_number_unit(unit: &str) -> ResultParseNumber {
         // Note that GNU cmp advertises supporting up to Y, but fails if you try
@@ -704,14 +782,6 @@ impl NumberParser {
 
         Ok(multiplier)
     }
-}
-
-#[allow(unused)] // required for cmp
-pub enum ParseNumberError {
-    NoValue,
-    PosOverflow,
-    InvalidNumber,
-    InvalidUnit,
 }
 
 /// Differentiates the utilities included in DiffUtil

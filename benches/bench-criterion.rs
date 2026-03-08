@@ -4,8 +4,8 @@
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use diffutilslib::{
-    arg_parser::ArgParser,
-    cmp::params_cmp::{ParamsCmp, ParamsCmpOk},
+    arg_parser::Executable,
+    cmp::params_cmp::{CmpParseOk, ParamsCmp},
 };
 use std::{ffi::OsString, process::Command, time::Duration};
 
@@ -22,10 +22,6 @@ fn bench_parser(c: &mut Criterion) {
     group.warm_up_time(Duration::from_millis(WARM_UP_TIME_MS));
     // group.measurement_time(Duration::from_millis(MEASUREMENT_TIME_MS));
     group.sample_size(10);
-
-    group.bench_function("Parse bytes Exabyte", |b| {
-        b.iter(|| ArgParser::parse_bytes("1EIB"))
-    });
 
     // group.bench_function("Parse short option", |b| {
     //     b.iter(|| parse_single_arg("cmd file_1.txt file_2.txt -b -l"))
@@ -51,14 +47,14 @@ fn bench_parser(c: &mut Criterion) {
 
 fn parse_single_arg(cmd: &str) -> String {
     let args = str_to_options(cmd).into_iter().peekable();
-    let params = match ParamsCmp::parse_params(args) {
+    let params = match ParamsCmp::parse_params(&Executable::Cmp, args) {
         Ok(res) => match res {
-            ParamsCmpOk::Info(info) => {
+            CmpParseOk::Help | CmpParseOk::Version => {
                 // println!("{info}");
                 // return ExitCode::from(0);
-                return info.to_string();
+                return "info".to_string();
             }
-            ParamsCmpOk::ParamsCmp(params) => params,
+            CmpParseOk::Params(params) => params,
         },
         Err(e) => {
             // eprintln!("{e}");
@@ -66,7 +62,7 @@ fn parse_single_arg(cmd: &str) -> String {
             return e.to_string();
         }
     };
-    return params.file_1.to_string_lossy().to_string();
+    return params.from.to_string_lossy().to_string();
 }
 
 fn str_to_options(opt: &str) -> Vec<OsString> {

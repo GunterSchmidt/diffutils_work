@@ -5,9 +5,10 @@
 
 // pub mod params;
 pub mod params_cmp;
-pub mod params_cmp_def;
-use crate::cmp::params_cmp::ParamsCmp;
-use crate::cmp::params_cmp_def::ParamsCmpOk;
+use crate::arg_parser::{
+    add_copyright, format_error_test, get_version_text, Executable, ParseError,
+};
+use crate::cmp::params_cmp::{CmpParseOk, ParamsCmp};
 use crate::utils::format_failure_to_read_input_file;
 use std::env::{self, ArgsOs};
 use std::ffi::OsString;
@@ -16,7 +17,6 @@ use std::iter::Peekable;
 use std::process::ExitCode;
 use std::{cmp, fs, io};
 
-pub const EXE_NAME: &str = "cmp";
 /// for --bytes, so really large number limits can be expressed, like 1Y.
 pub type BytesLimitU64 = u64;
 // ignore initial is currently limited to u64, as take(skip) is used.
@@ -24,7 +24,7 @@ pub type SkipU64 = u64;
 
 fn prepare_reader(
     path: &OsString,
-    skip: &Option<SkipU64>,
+    skip: SkipU64,
     params: &ParamsCmp,
 ) -> Result<Box<dyn BufRead>, String> {
     let mut reader: Box<dyn BufRead> = if path == "-" {
@@ -34,7 +34,7 @@ fn prepare_reader(
             Ok(file) => Box::new(BufReader::new(file)),
             Err(e) => {
                 return Err(format_failure_to_read_input_file(
-                    &params.util.to_os_string(),
+                    &params.executable.to_os_string(),
                     path,
                     &e,
                 ));
@@ -42,10 +42,10 @@ fn prepare_reader(
         }
     };
 
-    if let Some(skip) = skip {
-        if let Err(e) = io::copy(&mut reader.by_ref().take(*skip), &mut io::sink()) {
+    if skip > 0 {
+        if let Err(e) = io::copy(&mut reader.by_ref().take(skip), &mut io::sink()) {
             return Err(format_failure_to_read_input_file(
-                &params.util.to_os_string(),
+                &params.executable.to_os_string(),
                 path,
                 &e,
             ));
@@ -55,18 +55,106 @@ fn prepare_reader(
     Ok(reader)
 }
 
+// TODO Help text
+pub const TEXT_HELP: &str = r#"
+        Usage: {} [OPTION]... FILE1 [FILE2 [SKIP1 [SKIP2]]]
+        Compare two files byte by byte.
+
+        The optional SKIP1 and SKIP2 specify the number of bytes to skip
+        at the beginning of each file (zero by default).
+
+        Mandatory arguments to long options are mandatory for short options too.
+          -b, --print-bytes          print differing bytes
+          -i, --ignore-initial=SKIP         skip first SKIP bytes of both inputs
+          -i, --ignore-initial=SKIP1:SKIP2  skip first SKIP1 bytes of FILE1 and
+                                              first SKIP2 bytes of FILE2
+          -l, --verbose              output byte numbers and differing byte values
+          -n, --bytes=LIMIT          compare at most LIMIT bytes
+          -s, --quiet, --silent      suppress all normal output
+              --help                 display this help and exit
+          -v, --version              output version information and exit
+
+        SKIP values may be followed by the following multiplicative suffixes:
+        kB 1000, K 1024, MB 1,000,000, M 1,048,576,
+        GB 1,000,000,000, G 1,073,741,824, and so on for T, P, E, Z, Y.
+
+        If a FILE is '-' or missing, read standard input.
+        Exit status is 0 if inputs are the same, 1 if different, 2 if trouble.
+
+        This utility is part of the uutils project: https://github.com/uutils/
+        Report bugs here: https://github.com/uutils/diffutils/issues
+    "},
+        params.executable.to_string_lossy()
+    );"#;
+
+/// Entry into cmp.
+///
+/// Param options, e.g. 'cmp file1.txt file2.txt -bd n2000kB'.
+/// - Program name - Usually 'cmp' as first parameter, but accept any OsString.
+/// - cmp options - as documented at <https://www.gnu.org/software/diffutils/manual/html_node/cmp-Options.html>
+// Exit codes are documented at
+// https://www.gnu.org/software/diffutils/manual/html_node/Invoking-cmp.html
+//     An exit status of 0 means no differences were found,
+//     1 means some differences were found,
+//     and 2 means trouble.
+// TODO first param util: Executable,
+pub fn main(mut args: Peekable<ArgsOs>) -> ExitCode {
+    let Some(executable) = Executable::from_args_os(&mut args, true) else {
+        eprintln!("Expected utility name as first argument, got nothing.");
+        return ExitCode::FAILURE;
+    };
+    match cmp(&executable, args) {
+        Ok(res) => match res {
+            CmpOk::Different => ExitCode::FAILURE,
+            CmpOk::Equal => ExitCode::SUCCESS,
+            CmpOk::Help => {
+                println!("{}", add_copyright(TEXT_HELP));
+                ExitCode::SUCCESS
+            }
+            CmpOk::Version => {
+                println!("{}", get_version_text(&executable));
+                ExitCode::SUCCESS
+            }
+        },
+        Err(e) => {
+            let msg = format_error_test(&executable, &e);
+            eprintln!("{msg}");
+            ExitCode::from(2)
+        }
+    }
+}
+
 #[derive(Debug)]
-pub enum Cmp {
-    Equal,
+pub enum CmpOk {
     Different,
+    Equal,
+    Help,
+    Version,
+}
+
+pub fn cmp<I: Iterator<Item = OsString>>(
+    executable: &Executable,
+    args: Peekable<I>,
+) -> Result<CmpOk, CmpError> {
+    // read params
+    let params = match ParamsCmp::parse_params(executable, args)? {
+        CmpParseOk::Params(p) => p,
+        CmpParseOk::Help => return Ok(CmpOk::Help),
+        CmpParseOk::Version => return Ok(CmpOk::Version),
+    };
+
+    // dbg!("{params:?}");
+
+    // compare files
+    cmp_compare(&params)
 }
 
 /// This is the main function to compare the files. \
 /// Files are limited to u64 bytes and u64 lines.
 // TODO CmpError
-pub fn cmp(params: &ParamsCmp) -> Result<Cmp, String> {
-    let mut from = prepare_reader(&params.from, &params.ignore_initial_bytes_from, params)?;
-    let mut to = prepare_reader(&params.to, &params.ignore_initial_bytes_to, params)?;
+pub fn cmp_compare(params: &ParamsCmp) -> Result<CmpOk, CmpError> {
+    let mut from = prepare_reader(&params.from, params.skip_bytes_from, params)?;
+    let mut to = prepare_reader(&params.to, params.skip_bytes_to, params)?;
 
     let mut offset_width = params.bytes_limit.unwrap_or(BytesLimitU64::MAX);
 
@@ -80,7 +168,7 @@ pub fn cmp(params: &ParamsCmp) -> Result<Cmp, String> {
         // If the files have different sizes, we already know they are not identical. If we have not
         // been asked to show even the first difference, we can quit early.
         if params.silent && a_size != b_size {
-            return Ok(Cmp::Different);
+            return Ok(CmpOk::Different);
         }
 
         let smaller = cmp::min(a_size, b_size) as BytesLimitU64;
@@ -96,17 +184,18 @@ pub fn cmp(params: &ParamsCmp) -> Result<Cmp, String> {
     let mut at_line: u64 = 1;
     let mut start_of_line = true;
     let mut stdout = BufWriter::new(io::stdout().lock());
-    let mut compare = Cmp::Equal;
+    let mut compare = CmpOk::Equal;
     loop {
         // Fill up our buffers.
         let from_buf = match from.fill_buf() {
             Ok(buf) => buf,
             Err(e) => {
                 return Err(format_failure_to_read_input_file(
-                    &params.util.to_os_string(),
+                    &params.executable.to_os_string(),
                     &params.from,
                     &e,
-                ));
+                )
+                .into());
             }
         };
 
@@ -114,10 +203,11 @@ pub fn cmp(params: &ParamsCmp) -> Result<Cmp, String> {
             Ok(buf) => buf,
             Err(e) => {
                 return Err(format_failure_to_read_input_file(
-                    &params.util.to_os_string(),
+                    &params.executable.to_os_string(),
                     &params.to,
                     &e,
-                ));
+                )
+                .into());
             }
         };
 
@@ -134,7 +224,7 @@ pub fn cmp(params: &ParamsCmp) -> Result<Cmp, String> {
             };
 
             report_eof(at_byte, at_line, start_of_line, eof_on, params);
-            return Ok(Cmp::Different);
+            return Ok(CmpOk::Different);
         }
 
         // Fast path - for long files in which almost all bytes are the same we
@@ -169,7 +259,7 @@ pub fn cmp(params: &ParamsCmp) -> Result<Cmp, String> {
         // first one runs out.
         for (&from_byte, &to_byte) in from_buf.iter().zip(to_buf.iter()) {
             if from_byte != to_byte {
-                compare = Cmp::Different;
+                compare = CmpOk::Different;
 
                 if params.verbose {
                     format_verbose_difference(
@@ -180,13 +270,13 @@ pub fn cmp(params: &ParamsCmp) -> Result<Cmp, String> {
                         &mut output,
                         params,
                     )?;
-                    stdout
-                        .write_all(output.as_slice())
-                        .map_err(|e| format!("{}: error printing output: {e}", params.util))?;
+                    stdout.write_all(output.as_slice()).map_err(|e| {
+                        format!("{}: error printing output: {e}", params.executable)
+                    })?;
                     output.clear();
                 } else {
                     report_difference(from_byte, to_byte, at_byte, at_line, params);
-                    return Ok(Cmp::Different);
+                    return Ok(CmpOk::Different);
                 }
             }
 
@@ -210,63 +300,6 @@ pub fn cmp(params: &ParamsCmp) -> Result<Cmp, String> {
     }
 
     Ok(compare)
-}
-
-/// Entry into cmp.
-///
-/// Param options, e.g. 'cmp file1.txt file2.txt -bd n2000kB'.
-/// - Program name - Usually 'cmp' as first parameter, but accept any OsString.
-/// - cmp options - as documented at <https://www.gnu.org/software/diffutils/manual/html_node/cmp-Options.html>
-// Exit codes are documented at
-// https://www.gnu.org/software/diffutils/manual/html_node/Invoking-cmp.html
-//     An exit status of 0 means no differences were found,
-//     1 means some differences were found,
-//     and 2 means trouble.
-// TODO first param util: Executable,
-pub fn main(opts: Peekable<ArgsOs>) -> ExitCode {
-    // let params = match Params::parse_params(options) {
-    //     Ok(res) => match res {
-    //         ParamsParseOk::Info(info) => {
-    //             println!("{info}");
-    //             return ExitCode::from(0);
-    //         }
-    //         ParamsParseOk::Params(params) => params,
-    //     },
-    //     Err(e) => {
-    //         eprintln!("{e}");
-    //         return ExitCode::from(2);
-    //     }
-    // };
-    let params = match ParamsCmp::parse_params(opts) {
-        Ok(res) => match res {
-            ParamsCmpOk::Info(info) => {
-                println!("{info}");
-                return ExitCode::from(0);
-            }
-            ParamsCmpOk::ParamsCmp(params) => params,
-        },
-        Err(e) => {
-            eprintln!("{e}");
-            return ExitCode::from(2);
-        }
-    };
-
-    if params.from == "-" && params.to == "-"
-        || same_file::is_same_file(&params.from, &params.to).unwrap_or(false)
-    {
-        return ExitCode::SUCCESS;
-    }
-
-    match cmp(&params) {
-        Ok(Cmp::Equal) => ExitCode::SUCCESS,
-        Ok(Cmp::Different) => ExitCode::from(1),
-        Err(e) => {
-            if !params.silent {
-                eprintln!("{e}");
-            }
-            ExitCode::from(2)
-        }
-    }
 }
 
 #[inline]
@@ -436,18 +469,18 @@ fn report_eof(
     }
 
     if at_byte == 1 {
-        eprintln!("{}: EOF on '{}' which is empty", params.util, eof_on);
+        eprintln!("{}: EOF on '{}' which is empty", params.executable, eof_on);
     } else if params.verbose {
         eprintln!(
             "{}: EOF on '{}' after byte {}",
-            params.util,
+            params.executable,
             eof_on,
             at_byte - 1,
         );
     } else if start_of_line {
         eprintln!(
             "{}: EOF on '{}' after byte {}, line {}",
-            params.util,
+            params.executable,
             eof_on,
             at_byte - 1,
             at_line - 1
@@ -455,7 +488,7 @@ fn report_eof(
     } else {
         eprintln!(
             "{}: EOF on '{}' after byte {}, in line {}",
-            params.util,
+            params.executable,
             eof_on,
             at_byte - 1,
             at_line
@@ -543,4 +576,46 @@ fn is_stdout_dev_null() -> bool {
     std::mem::forget(stdout_file);
 
     is_dev_null
+}
+
+/// Errors for cmp.
+///
+/// To centralize error messages and make it easier to use in a lib.
+#[derive(Debug, PartialEq)]
+#[allow(clippy::enum_variant_names)]
+pub enum CmpError {
+    // parse errors
+    ParseError(ParseError),
+
+    // TODO simple string, should be more specific
+    GenericString(String),
+    // compare errors
+    OutputError(String),
+    // (msg)
+    ReadFileError(String),
+}
+
+impl std::error::Error for CmpError {}
+
+impl From<ParseError> for CmpError {
+    fn from(e: ParseError) -> Self {
+        Self::ParseError(e)
+    }
+}
+
+impl From<String> for CmpError {
+    fn from(str: String) -> Self {
+        Self::GenericString(str)
+    }
+}
+
+impl std::fmt::Display for CmpError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let msg = match self {
+            CmpError::ParseError(e) => e.to_string(),
+            CmpError::OutputError(msg) | CmpError::ReadFileError(msg) => msg.clone(),
+            CmpError::GenericString(msg) => msg.clone(),
+        };
+        write!(f, "{msg}")
+    }
 }

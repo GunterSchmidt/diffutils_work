@@ -15,7 +15,7 @@ use crate::arg_parser::Executable;
 // use predicates::name;
 
 mod arg_parser;
-// mod cmp;
+mod cmp;
 mod context_diff;
 mod diff;
 // mod diff3;
@@ -73,7 +73,7 @@ fn main() -> ExitCode {
         second_arg_error(exe_name)
     };
     match executable {
-        // Executable::Cmp => cmp::main(args),
+        Executable::Cmp => cmp::main(args),
         Executable::Diff => diff::main(args),
         // Executable::Diff3 => diff3::main(args),
         // Executable::Patch => todo!(),
