@@ -289,7 +289,7 @@ pub enum OptionNameTypeUsed {
 #[derive(Debug, Default)]
 pub struct Parser {
     pub options_parsed: Vec<ParsedOption>,
-    pub operands: Vec<OsString>, // pub arg_options: &'a [ArgOption],
+    pub operands: Vec<OsString>,
     // temporary stored for each param
     name_type_used: OptionNameTypeUsed,
 }
@@ -520,7 +520,7 @@ impl Parser {
 ///
 /// All errors can be output easily using the normal Display functionality.
 /// To format the error message for the typical diffutils output, use [write_err].
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ParseError {
     /// When the long option is abbreviated, but does not have a unique match.
     /// (ambiguous option, possible options)

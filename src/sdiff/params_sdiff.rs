@@ -17,7 +17,7 @@ use crate::arg_parser::{
 //     sdiff::params_sdiff::ParamsSDiff,
 // };
 
-pub type ResultSdiffParse = Result<SDiffParseOk, ParseError>;
+pub type ResultSDiffParse = Result<SDiffParseOk, ParseError>;
 
 // AppOptions for sdiff
 pub const OPT_DIFF_PROGRAM: AppOption = AppOption {
@@ -112,7 +112,7 @@ pub const OPT_WIDTH: AppOption = AppOption {
 };
 
 // Array for ArgParser
-pub const ARG_OPTIONS: [AppOption; 20] = [
+pub const APP_OPTIONS: [AppOption; 20] = [
     OPT_DIFF_PROGRAM,
     OPT_EXPAND_TABS,
     OPT_HELP,
@@ -255,8 +255,8 @@ impl ParamsSDiff {
     pub fn parse_params<I: Iterator<Item = OsString>>(
         executable: &Executable,
         args: Peekable<I>,
-    ) -> ResultSdiffParse {
-        let parser = Parser::parse_params(&ARG_OPTIONS, args)?;
+    ) -> ResultSDiffParse {
+        let parser = Parser::parse_params(&APP_OPTIONS, args)?;
 
         // check implemented options
         #[cfg(feature = "feat_check_not_yet_implemented")]
@@ -276,8 +276,6 @@ impl ParamsSDiff {
                 OPT_DIFF_PROGRAM => params.diff_program = parsed_option.arg_for_option.clone(),
                 OPT_EXPAND_TABS => params.expand_tabs = true,
                 OPT_HELP => return Ok(SDiffParseOk::Help),
-                // OPT_HELP => return Ok(ParamsSdiffOk::Info(arg_parser::add_copyright(TEXT_HELP))),
-                // OPT_HELP => return Ok(ParamsSdiffOk::Info(TEXT_HELP.to_string())),
                 OPT_IGNORE_ALL_SPACE => params.ignore_all_space = true,
                 OPT_IGNORE_BLANK_LINES => params.ignore_blank_lines = true,
                 OPT_IGNORE_CASE => params.ignore_case = true,
@@ -361,7 +359,7 @@ mod tests {
     }
 
     /// Simplify call of parser, just pass a normal string like in the Terminal.
-    fn parse(args: &str) -> ResultSdiffParse {
+    fn parse(args: &str) -> ResultSDiffParse {
         let mut o = Vec::new();
         for arg in args.split(' ') {
             o.push(os(arg));
@@ -373,7 +371,7 @@ mod tests {
         ParamsSDiff::parse_params(&executable, p)
     }
 
-    fn res_ok(params: ParamsSDiff) -> ResultSdiffParse {
+    fn res_ok(params: ParamsSDiff) -> ResultSDiffParse {
         Ok(SDiffParseOk::Params(params))
     }
 

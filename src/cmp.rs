@@ -124,14 +124,6 @@ pub fn main(mut args: Peekable<ArgsOs>) -> ExitCode {
     }
 }
 
-#[derive(Debug)]
-pub enum CmpOk {
-    Different,
-    Equal,
-    Help,
-    Version,
-}
-
 /// This is the full sdiff call.
 ///
 /// The first arg needs to be the executable, then the operands and options.
@@ -582,10 +574,19 @@ fn is_stdout_dev_null() -> bool {
     is_dev_null
 }
 
+/// The Ok result of cmp.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CmpOk {
+    Different,
+    Equal,
+    Help,
+    Version,
+}
+
 /// Errors for cmp.
 ///
 /// To centralize error messages and make it easier to use in a lib.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[allow(clippy::enum_variant_names, unused)]
 pub enum CmpError {
     // parse errors

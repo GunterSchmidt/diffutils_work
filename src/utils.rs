@@ -95,6 +95,7 @@ pub fn format_failure_to_read_input_file(
 }
 
 /// Formats the error messages of both files.
+/// TODO remove executable
 pub fn format_failure_to_read_input_files(
     executable: &OsString,
     errors: &[(OsString, Error)],

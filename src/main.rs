@@ -18,7 +18,7 @@ mod arg_parser;
 mod cmp;
 mod context_diff;
 mod diff;
-// mod diff3;
+mod diff3;
 mod ed_diff;
 mod macros;
 mod normal_diff;
@@ -75,7 +75,7 @@ fn main() -> ExitCode {
     match executable {
         Executable::Cmp => cmp::main(args),
         Executable::Diff => diff::main(args),
-        // Executable::Diff3 => diff3::main(args),
+        Executable::Diff3 => diff3::main(args),
         // Executable::Patch => todo!(),
         Executable::SDiff => sdiff::main(args),
         _ => {

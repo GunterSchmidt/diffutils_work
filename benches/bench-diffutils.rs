@@ -1,3 +1,4 @@
+// #![allow(unused)]
 // This file is part of the uutils diffutils package.
 //
 // For the full copyright and license information, please view the LICENSE-*
@@ -21,66 +22,59 @@ const CHANGE_CHAR: u8 = b'#';
 
 #[cfg(not(feature = "feat_bench_not_cmp"))]
 mod diffutils_cmp {
-    use std::hint::black_box;
-
-    use diffutilslib::{arg_parser::Executable, cmp};
+    use diffutilslib::cmp;
     use divan::Bencher;
 
     use crate::{binary, prepare::*, FILE_SIZE_KILO_BYTES};
-
-    const CMP: Executable = Executable::Cmp;
 
     // bench equal, full file read
     #[divan::bench(args = FILE_SIZE_KILO_BYTES)]
     fn cmp_compare_files_equal(bencher: Bencher, kb: u64) {
         let (from, to) = get_context().get_test_files_equal(kb);
-        let cmd = format!("cmp {from} {to}");
-        let mut args = str_to_options(&cmd).into_iter();
-        args.next();
-        // let params = cmp::parse_params(args).unwrap();
+        let cmd = format!("{from} {to}");
+        let args = str_to_options(&cmd).into_iter();
 
         bencher
             // .with_inputs(|| prepare::cmp_params_identical_testfiles(lines))
             .with_inputs(|| args.clone())
-            .bench_refs(|params| black_box(cmp::cmp(&CMP, params.peekable())));
+            .bench_refs(|params| cmp::cmp(params.peekable()));
     }
 
-    //     // bench different; cmp exits on first difference
-    //     #[divan::bench(args = FILE_SIZE_KILO_BYTES)]
-    //     fn cmp_compare_files_different(bencher: Bencher, bytes: u64) {
-    //         let (from, to) = get_context().get_test_files_different(bytes);
-    //         let cmd = format!("cmp {from} {to} -s");
-    //         let opts = str_to_options(&cmd).into_iter().peekable();
-    //         let params = cmp::parse_params(opts).unwrap();
-    //
-    //         bencher
-    //             // .with_inputs(|| prepare::cmp_params_identical_testfiles(lines))
-    //             .with_inputs(|| params.clone())
-    //             .bench_refs(|params| black_box(cmp::cmp(&params).unwrap()));
-    //     }
+    // bench different; cmp exits on first difference
+    #[divan::bench(args = FILE_SIZE_KILO_BYTES)]
+    fn cmp_compare_files_different(bencher: Bencher, bytes: u64) {
+        let (from, to) = get_context().get_test_files_different(bytes);
+        let cmd = format!("{from} {to}");
+        let args = str_to_options(&cmd).into_iter();
 
-    //     // bench original GNU cmp
-    //     #[divan::bench(args = FILE_SIZE_KILO_BYTES)]
-    //     fn cmd_cmp_gnu_equal(bencher: Bencher, bytes: u64) {
-    //         let (from, to) = get_context().get_test_files_equal(bytes);
-    //         let args_str = format!("{from} {to}");
-    //         bencher
-    //             // .with_inputs(|| prepare::cmp_params_identical_testfiles(lines))
-    //             .with_inputs(|| args_str.clone())
-    //             .bench_refs(|cmd_args| binary::bench_binary("cmp", cmd_args));
-    //     }
-    //
-    //     // bench the compiled release version
-    //     #[divan::bench(args = FILE_SIZE_KILO_BYTES)]
-    //     fn cmd_cmp_release_equal(bencher: Bencher, bytes: u64) {
-    //         let (from, to) = get_context().get_test_files_equal(bytes);
-    //         let args_str = format!("cmp {from} {to}");
-    //
-    //         bencher
-    //             // .with_inputs(|| prepare::cmp_params_identical_testfiles(lines))
-    //             .with_inputs(|| args_str.clone())
-    //             .bench_refs(|cmd_args| binary::bench_binary("target/release/diffutils", cmd_args));
-    //     }
+        bencher
+            // .with_inputs(|| prepare::cmp_params_identical_testfiles(lines))
+            .with_inputs(|| args.clone())
+            .bench_refs(|params| cmp::cmp(params.peekable()));
+    }
+
+    // bench original GNU cmp
+    #[divan::bench(args = FILE_SIZE_KILO_BYTES)]
+    fn cmd_cmp_gnu_equal(bencher: Bencher, bytes: u64) {
+        let (from, to) = get_context().get_test_files_equal(bytes);
+        let args_str = format!("{from} {to}");
+        bencher
+            // .with_inputs(|| prepare::cmp_params_identical_testfiles(lines))
+            .with_inputs(|| args_str.clone())
+            .bench_refs(|cmd_args| binary::bench_binary("cmp", cmd_args));
+    }
+
+    // bench the compiled release version
+    #[divan::bench(args = FILE_SIZE_KILO_BYTES)]
+    fn cmd_cmp_release_equal(bencher: Bencher, bytes: u64) {
+        let (from, to) = get_context().get_test_files_equal(bytes);
+        let args_str = format!("cmp {from} {to}");
+
+        bencher
+            // .with_inputs(|| prepare::cmp_params_identical_testfiles(lines))
+            .with_inputs(|| args_str.clone())
+            .bench_refs(|cmd_args| binary::bench_binary("target/release/diffutils", cmd_args));
+    }
 }
 
 #[cfg(not(feature = "feat_bench_not_diff"))]
@@ -95,39 +89,38 @@ mod diffutils_diff {
     // TODO diff does not have a diff function
     //     #[divan::bench(args = [100_000,10_000])]
     //     fn diff_compare_files(bencher: Bencher, bytes: u64) {
-    //         let (from, to) = gen_testfiles(lines, 0, "id");
-    //         let cmd = format!("cmp {from} {to}");
-    //         let opts = str_to_options(&cmd).into_iter().peekable();
-    //         let params = params::parse_params(opts).unwrap();
+    //         let (from, to) = get_context().get_test_files_equal(kb);
+    //         let cmd = format!("{from} {to}");
+    //         let mut args = str_to_options(&cmd).into_iter();
     //
     //         bencher
     //             // .with_inputs(|| prepare::cmp_params_identical_testfiles(lines))
-    //             .with_inputs(|| params.clone())
-    //             .bench_refs(|params| diff::diff(&params).unwrap());
+    //             .with_inputs(|| args.clone())
+    //             .bench_refs(|params| diff::diff(params.peekable()));
     //     }
 
-    //     // bench original GNU diff
-    //     #[divan::bench(args = FILE_SIZE_KILO_BYTES)]
-    //     fn cmd_diff_gnu_equal(bencher: Bencher, bytes: u64) {
-    //         let (from, to) = get_context().get_test_files_equal(bytes);
-    //         let args_str = format!("{from} {to}");
-    //         bencher
-    //             // .with_inputs(|| prepare::cmp_params_identical_testfiles(lines))
-    //             .with_inputs(|| args_str.clone())
-    //             .bench_refs(|cmd_args| binary::bench_binary("diff", cmd_args));
-    //     }
-    //
-    //     // bench the compiled release version
-    //     #[divan::bench(args = FILE_SIZE_KILO_BYTES)]
-    //     fn cmd_diff_release_equal(bencher: Bencher, bytes: u64) {
-    //         let (from, to) = get_context().get_test_files_equal(bytes);
-    //         let args_str = format!("diff {from} {to}");
-    //
-    //         bencher
-    //             // .with_inputs(|| prepare::cmp_params_identical_testfiles(lines))
-    //             .with_inputs(|| args_str.clone())
-    //             .bench_refs(|cmd_args| binary::bench_binary("target/release/diffutils", cmd_args));
-    //     }
+    // bench original GNU diff
+    #[divan::bench(args = FILE_SIZE_KILO_BYTES)]
+    fn cmd_diff_gnu_equal(bencher: Bencher, bytes: u64) {
+        let (from, to) = get_context().get_test_files_equal(bytes);
+        let args_str = format!("{from} {to}");
+        bencher
+            // .with_inputs(|| prepare::cmp_params_identical_testfiles(lines))
+            .with_inputs(|| args_str.clone())
+            .bench_refs(|cmd_args| binary::bench_binary("diff", cmd_args));
+    }
+
+    // bench the compiled release version
+    #[divan::bench(args = FILE_SIZE_KILO_BYTES)]
+    fn cmd_diff_release_equal(bencher: Bencher, bytes: u64) {
+        let (from, to) = get_context().get_test_files_equal(bytes);
+        let args_str = format!("diff {from} {to}");
+
+        bencher
+            // .with_inputs(|| prepare::cmp_params_identical_testfiles(lines))
+            .with_inputs(|| args_str.clone())
+            .bench_refs(|cmd_args| binary::bench_binary("target/release/diffutils", cmd_args));
+    }
 }
 
 mod parser {

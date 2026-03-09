@@ -99,14 +99,6 @@ pub fn main(mut args: Peekable<ArgsOs>) -> ExitCode {
     }
 }
 
-#[derive(Debug)]
-pub enum SDiffOk {
-    Different,
-    Equal,
-    Help,
-    Version,
-}
-
 /// This is the full sdiff call.
 ///
 /// The first arg needs to be the executable, then the operands and options.
@@ -165,10 +157,19 @@ pub fn sdiff_compare(params: &ParamsSDiff) -> Result<SDiffOk, SDiffError> {
     }
 }
 
+/// The Ok result of sdiff.
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum SDiffOk {
+    Different,
+    Equal,
+    Help,
+    Version,
+}
+
 /// Errors for sdiff.
 ///
 /// To centralize error messages and make it easier to use in a lib.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[allow(clippy::enum_variant_names)]
 pub enum SDiffError {
     // parse errors
