@@ -68,9 +68,14 @@ pub fn main(opts: Peekable<ArgsOs>) -> ExitCode {
             params.from.to_string_lossy(),
             params.to.to_string_lossy()
         );
-    } else {
-        io::stdout().write_all(&result).unwrap();
+    } else if let Err(e) = io::stdout().write_all(&result) {
+        // let broken pipe pass, report other errors (issue #192)
+        if e.kind() != io::ErrorKind::BrokenPipe {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
     }
+
     if result.is_empty() {
         maybe_report_identical_files();
         ExitCode::SUCCESS
