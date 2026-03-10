@@ -29,8 +29,9 @@
           "kind": "bin"
         }
       },
-      // "args": ["cmp", "fruits_old.txt", "fruits_new.txt", "-v"],
-      "args": [],
+      // "args": ["sdiff", "fruits_old.txt","--", "fruits_new.txt", "-v"],
+      "args": ["cmp", "old.txt", "new.txtx"],
+      // "args": ["sdiff"],
       "cwd": "${workspaceFolder}"
     },
     {

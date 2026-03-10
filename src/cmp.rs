@@ -4,9 +4,10 @@
 // files that was distributed with this source code.
 
 // pub mod params;
+
 pub mod params_cmp;
 use crate::arg_parser::{
-    add_copyright, format_error_test, get_version_text, Executable, ParseError,
+    add_copyright, format_error_text, get_version_text, Executable, ParseError,
 };
 use crate::cmp::params_cmp::{CmpParseOk, ParamsCmp};
 use crate::utils::format_failure_to_read_input_file;
@@ -21,39 +22,6 @@ use std::{cmp, fs, io};
 pub type BytesLimitU64 = u64;
 // ignore initial is currently limited to u64, as take(skip) is used.
 pub type SkipU64 = u64;
-
-fn prepare_reader(
-    path: &OsString,
-    skip: SkipU64,
-    params: &ParamsCmp,
-) -> Result<Box<dyn BufRead>, String> {
-    let mut reader: Box<dyn BufRead> = if path == "-" {
-        Box::new(BufReader::new(io::stdin()))
-    } else {
-        match fs::File::open(path) {
-            Ok(file) => Box::new(BufReader::new(file)),
-            Err(e) => {
-                return Err(format_failure_to_read_input_file(
-                    &params.executable.to_os_string(),
-                    path,
-                    &e,
-                ));
-            }
-        }
-    };
-
-    if skip > 0 {
-        if let Err(e) = io::copy(&mut reader.by_ref().take(skip), &mut io::sink()) {
-            return Err(format_failure_to_read_input_file(
-                &params.executable.to_os_string(),
-                path,
-                &e,
-            ));
-        }
-    }
-
-    Ok(reader)
-}
 
 // TODO Help text
 pub const TEXT_HELP: &str = r#"
@@ -117,7 +85,12 @@ pub fn main(mut args: Peekable<ArgsOs>) -> ExitCode {
             }
         },
         Err(e) => {
-            let msg = format_error_test(&executable, &e);
+            let msg = match e {
+                CmpError::DirectoryNotAllowed(dir) => {
+                    format!("{}: {}: is a directory", executable, dir.to_string_lossy())
+                }
+                _ => format_error_text(&executable, &e),
+            };
             eprintln!("{msg}");
             ExitCode::from(2)
         }
@@ -138,17 +111,47 @@ pub fn cmp<I: Iterator<Item = OsString>>(mut args: Peekable<I>) -> Result<CmpOk,
         CmpParseOk::Version => return Ok(CmpOk::Version),
     };
 
-    // dbg!("{params:?}");
+    dbg!("{params:?}");
 
     // compare files
     cmp_compare(&params)
 }
 
+// fn is_dir(path: &OsStr) -> Result<bool, CmpError> {
+//     match fs::metadata(path) {
+//         Ok(m) => {
+//             if m.is_dir() {
+//                 return Err(CmpError::DirectoryNotAllowed(path.to_os_string()));
+//             }
+//             Ok(false)
+//         }
+//         Err(_) => todo!(),
+//     }
+// }
 // TODO struct Cmp
 /// This is the main function to compare the files. \
 /// Files are limited to u64 bytes and u64 lines.
 // TODO CmpError
 pub fn cmp_compare(params: &ParamsCmp) -> Result<CmpOk, CmpError> {
+    // check if file is actually a directory, which is not allowed
+    match fs::metadata(&params.from) {
+        Ok(m) => {
+            if m.is_dir() {
+                return Err(CmpError::DirectoryNotAllowed(params.from.clone()));
+            }
+        }
+        Err(_) => todo!(),
+    }
+    match fs::metadata(&params.to) {
+        Ok(m) => {
+            if m.is_dir() {
+                return Err(CmpError::DirectoryNotAllowed(params.to.clone()));
+            }
+        }
+        Err(e) => eprintln!("{}", strip_io_error(&e)),
+    }
+
+    // std::process::exit(0);
     let mut from = prepare_reader(&params.from, params.skip_bytes_from, params)?;
     let mut to = prepare_reader(&params.to, params.skip_bytes_to, params)?;
 
@@ -314,6 +317,39 @@ fn format_octal(byte: u8, buf: &mut [u8; 3]) -> &str {
 
     // SAFETY: the operations we do above always land within ascii range.
     unsafe { std::str::from_utf8_unchecked(&buf[..]) }
+}
+
+fn prepare_reader(
+    path: &OsString,
+    skip: SkipU64,
+    params: &ParamsCmp,
+) -> Result<Box<dyn BufRead>, String> {
+    let mut reader: Box<dyn BufRead> = if path == "-" {
+        Box::new(BufReader::new(io::stdin()))
+    } else {
+        match fs::File::open(path) {
+            Ok(file) => Box::new(BufReader::new(file)),
+            Err(e) => {
+                return Err(format_failure_to_read_input_file(
+                    &params.executable.to_os_string(),
+                    path,
+                    &e,
+                ));
+            }
+        }
+    };
+
+    if skip > 0 {
+        if let Err(e) = io::copy(&mut reader.by_ref().take(skip), &mut io::sink()) {
+            return Err(format_failure_to_read_input_file(
+                &params.executable.to_os_string(),
+                path,
+                &e,
+            ));
+        }
+    }
+
+    Ok(reader)
 }
 
 #[inline]
@@ -553,7 +589,7 @@ use std::os::unix::fs::MetadataExt;
 use std::os::windows::fs::MetadataExt;
 
 #[cfg(not(target_os = "windows"))]
-fn is_stdout_dev_null() -> bool {
+pub fn is_stdout_dev_null() -> bool {
     let Ok(dev_null) = fs::metadata("/dev/null") else {
         return false;
     };
@@ -598,6 +634,8 @@ pub enum CmpError {
     OutputError(String),
     // (msg)
     ReadFileError(String),
+    /// operand for file
+    DirectoryNotAllowed(OsString),
 }
 
 impl std::error::Error for CmpError {}
@@ -616,11 +654,20 @@ impl From<String> for CmpError {
 
 impl std::fmt::Display for CmpError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let msg = match self {
-            CmpError::ParseError(e) => e.to_string(),
-            CmpError::OutputError(msg) | CmpError::ReadFileError(msg) => msg.clone(),
-            CmpError::GenericString(msg) => msg.clone(),
-        };
-        write!(f, "{msg}")
+        match self {
+            CmpError::ParseError(e) => write!(f, "{e}"),
+            CmpError::OutputError(msg) | CmpError::ReadFileError(msg) => write!(f, "{msg}"),
+            CmpError::GenericString(msg) => write!(f, "{msg}"),
+            CmpError::DirectoryNotAllowed(dir) => {
+                write!(f, "{}: is a directory", dir.to_string_lossy())
+            }
+        }
     }
+}
+
+pub fn strip_io_error(error: &std::io::Error) -> String {
+    // std::io::Error's display trait outputs "{detail} (os error {code})"
+    // but we want only the {detail} (error string) part
+    let err = error.to_string();
+    format!("{}", err.split(" (os error").next().unwrap_or(&err))
 }

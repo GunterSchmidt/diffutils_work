@@ -3,9 +3,7 @@
 // For the full copyright and license information, please view the LICENSE-*
 // files that was distributed with this source code.
 
-//! This module contains the Parser for sdiff arguments.
-//!
-//! All option definitions, output texts and the Error handling is in [super::params_sdiff_def].
+//! This module contains the Parser for sdiff arguments ([ParamsSDiff::parse_params]).
 use std::{ffi::OsString, iter::Peekable};
 
 use crate::arg_parser::{
@@ -158,8 +156,8 @@ pub const NOT_YET_IMPLEMENTED: [AppOption; 15] = [
 /// Parser Result Ok Enum with Params.
 ///
 /// # Returns
-/// * Params in normal cases
-/// * Just Help or Version when these are requested as the params are then not relevant.
+/// - Params in normal cases
+/// - Just Help or Version when these are requested as the params are then not relevant.
 ///
 /// Error will be returned as [ParseError] in the function Result Error.
 #[derive(Debug, PartialEq)]
@@ -251,7 +249,7 @@ impl Default for ParamsSDiff {
 impl ParamsSDiff {
     /// Parses the program arguments.
     ///
-    /// First argument is expected to be the executable.
+    /// The arguments must not contain the executable.
     pub fn parse_params<I: Iterator<Item = OsString>>(
         executable: &Executable,
         args: Peekable<I>,

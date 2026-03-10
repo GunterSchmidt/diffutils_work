@@ -91,7 +91,7 @@ mod diffutils_diff {
     //     fn diff_compare_files(bencher: Bencher, bytes: u64) {
     //         let (from, to) = get_context().get_test_files_equal(kb);
     //         let cmd = format!("{from} {to}");
-    //         let mut args = str_to_options(&cmd).into_iter();
+    //         let args = str_to_options(&cmd).into_iter();
     //
     //         bencher
     //             // .with_inputs(|| prepare::cmp_params_identical_testfiles(lines))

@@ -260,7 +260,7 @@ impl ParamsCmp {
         Ok(has_2nd)
     }
 
-    /// Sets the [Self::skip_bytes_file_1] value.
+    /// Sets the [Self::skip_bytes_from] value.
     ///
     /// * ParsedOption.arg_for_option - A valid number String, e.g. 1800 or 12KiB
     ///
@@ -273,7 +273,7 @@ impl ParamsCmp {
         self.set_skip_bytes_file_no(parsed_option, 1)
     }
 
-    /// Sets the [Self::skip_bytes_file_2] value.
+    /// Sets the [Self::skip_bytes_to] value.
     ///
     /// * bytes - A valid number String, e.g. 1800 or 12KiB
     pub fn set_skip_bytes_file_2(
@@ -283,7 +283,7 @@ impl ParamsCmp {
         self.set_skip_bytes_file_no(parsed_option, 2)
     }
 
-    /// Sets the [Self::skip_bytes_file_1] value.
+    /// Sets the [Self::skip_bytes_from] value.
     ///
     /// If calling this manually, set_skip_bytes_file_2 to the same value unless
     /// separate values are required.  

@@ -4,8 +4,6 @@
 // files that was distributed with this source code.
 
 //! This module contains the Parser for diff3 arguments.
-//!
-//! All option definitions, output texts and the Error handling is in [super::params_diff3_def].
 use std::{ffi::OsString, iter::Peekable};
 
 use crate::arg_parser::{AppOption, Executable, ParseError, Parser, OPT_HELP, OPT_VERSION};

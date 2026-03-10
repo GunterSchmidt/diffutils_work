@@ -9,14 +9,15 @@ pub mod params_sdiff;
 use std::{
     env::ArgsOs,
     ffi::OsString,
-    io::{stdout, Write},
+    fs,
+    io::{self, stdout, Read, Write},
     iter::Peekable,
     process::ExitCode,
 };
 
 use crate::{
     arg_parser::{
-        add_copyright, format_error_test, get_version_text, Executable, ParseError,
+        add_copyright, format_error_text, get_version_text, Executable, ParseError,
         TEXT_HELP_FOOTER,
     },
     sdiff::params_sdiff::{ParamsSDiff, SDiffParseOk},
@@ -92,7 +93,13 @@ pub fn main(mut args: Peekable<ArgsOs>) -> ExitCode {
             }
         },
         Err(e) => {
-            let msg = format_error_test(&executable, &e);
+            let msg = match e {
+                SDiffError::ReadFileErrors(_, _) => {
+                    format!("{e}")
+                }
+                _ => format_error_text(&executable, &e),
+            };
+            // let msg = format_error_text(&executable, &e);
             eprintln!("{msg}");
             ExitCode::from(2)
         }
@@ -103,7 +110,7 @@ pub fn main(mut args: Peekable<ArgsOs>) -> ExitCode {
 ///
 /// The first arg needs to be the executable, then the operands and options.
 pub fn sdiff<I: Iterator<Item = OsString>>(mut args: Peekable<I>) -> Result<SDiffOk, SDiffError> {
-    let Some(executable) = Executable::from_args_os(&mut args, false) else {
+    let Some(executable) = Executable::from_args_os(&mut args, true) else {
         return Err(ParseError::NoExecutable.into());
     };
     // read params
@@ -130,14 +137,22 @@ pub fn sdiff_compare(params: &ParamsSDiff) -> Result<SDiffOk, SDiffError> {
         return Ok(SDiffOk::Equal);
     }
 
-    let (from_content, to_content) = match utils::read_both_files(&params.from, &params.to) {
-        Ok(contents) => contents,
-        // Err((filepath, error)) => {
+    let (from_content, to_content) = match read_both_files(&params.from, &params.to) {
+        Ok(files) => files,
         Err(errors) => {
-            let msg =
-                utils::format_failure_to_read_input_files(&params.executable.executable(), &errors);
-            dbg!(&msg);
-            return Err(SDiffError::ReadFileError(msg));
+            let mut vs = Vec::new();
+            for (file, e) in errors {
+                let s = utils::format_failure_to_read_input_file(
+                    &params.executable.to_os_string(),
+                    &file,
+                    &e,
+                );
+                vs.push(s);
+            }
+            return Err(SDiffError::ReadFileErrors(
+                params.executable.clone(),
+                vs.to_vec(),
+            ));
         }
     };
 
@@ -154,6 +169,45 @@ pub fn sdiff_compare(params: &ParamsSDiff) -> Result<SDiffOk, SDiffError> {
             }
         }
         Err(e) => Err(SDiffError::OutputError(e.to_string())),
+    }
+}
+
+/// Helper function to read a file fully into memory.
+// While this could be in utils, the functionality is limited to files which fit into memory.
+// TODO will not work for large files, need buffered approach.
+pub fn read_file_contents(filepath: &OsString) -> io::Result<Vec<u8>> {
+    if filepath == "-" {
+        let mut content = Vec::new();
+        io::stdin().read_to_end(&mut content).and(Ok(content))
+    } else {
+        fs::read(filepath)
+    }
+}
+
+/// Reads both files and returns the files or a list of errors, as both files can produce a separate error.
+pub type ResultReadBothFiles = Result<(Vec<u8>, Vec<u8>), Vec<(OsString, io::Error)>>;
+/// Reads both files and returns the files or a list of errors, as both files can produce a separate error.
+pub fn read_both_files(from: &OsString, to: &OsString) -> ResultReadBothFiles {
+    let mut read_errors = Vec::new();
+    let from_content = match read_file_contents(from).map_err(|e| (from.clone(), e)) {
+        Ok(r) => r,
+        Err(e) => {
+            read_errors.push(e);
+            Vec::new()
+        }
+    };
+    let to_content = match read_file_contents(to).map_err(|e| (to.clone(), e)) {
+        Ok(r) => r,
+        Err(e) => {
+            read_errors.push(e);
+            Vec::new()
+        }
+    };
+
+    if read_errors.is_empty() {
+        Ok((from_content, to_content))
+    } else {
+        Err(read_errors)
     }
 }
 
@@ -177,8 +231,7 @@ pub enum SDiffError {
 
     // compare errors
     OutputError(String),
-    // (msg)
-    ReadFileError(String),
+    ReadFileErrors(Executable, Vec<String>),
 }
 
 impl std::error::Error for SDiffError {}
@@ -191,10 +244,10 @@ impl From<ParseError> for SDiffError {
 
 impl std::fmt::Display for SDiffError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let msg = match self {
-            SDiffError::ParseError(e) => e.to_string(),
-            SDiffError::OutputError(msg) | SDiffError::ReadFileError(msg) => msg.clone(),
-        };
-        write!(f, "{msg}")
+        match self {
+            SDiffError::ParseError(e) => write!(f, "{e}"),
+            SDiffError::OutputError(msg) => write!(f, "{msg}"),
+            SDiffError::ReadFileErrors(_exe, vec_err) => write!(f, "{}", vec_err.join("\n")),
+        }
     }
 }

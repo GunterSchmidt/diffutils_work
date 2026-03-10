@@ -4,11 +4,15 @@
 // files that was distributed with this source code.
 
 use crate::params::{parse_params, Format};
-use crate::{context_diff, ed_diff, normal_diff, side_diff, unified_diff, utils};
+use crate::utils::report_failure_to_read_input_file;
+use crate::{context_diff, ed_diff, normal_diff, side_diff, unified_diff};
 use std::env::ArgsOs;
-use std::io::{self, stdout, Write};
+use std::ffi::OsString;
+use std::fs;
+use std::io::{self, stdout, Read, Write};
 use std::iter::Peekable;
 use std::process::{exit, ExitCode};
+use uucore::error::FromIo;
 
 // Exit codes are documented at
 // https://www.gnu.org/software/diffutils/manual/html_node/Invoking-diff.html.
@@ -37,16 +41,35 @@ pub fn main(opts: Peekable<ArgsOs>) -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    let (from_content, to_content) = match utils::read_both_files(&params.from, &params.to) {
-        Ok(contents) => contents,
+    // read files
+    fn read_file_contents(filepath: &OsString) -> io::Result<Vec<u8>> {
+        if filepath == "-" {
+            let mut content = Vec::new();
+            io::stdin().read_to_end(&mut content).and(Ok(content))
+        } else {
+            fs::read(filepath)
+        }
+    }
+    let mut io_error = false;
+    let from_content = match read_file_contents(&params.from) {
+        Ok(from_content) => from_content,
         Err(e) => {
-            eprintln!(
-                "{}",
-                utils::format_failure_to_read_input_files(&params.executable, &e)
-            );
-            return ExitCode::from(2);
+            report_failure_to_read_input_file(&params.executable, &params.from, &e);
+            io_error = true;
+            vec![]
         }
     };
+    let to_content = match read_file_contents(&params.to) {
+        Ok(to_content) => to_content,
+        Err(e) => {
+            report_failure_to_read_input_file(&params.executable, &params.to, &e);
+            io_error = true;
+            vec![]
+        }
+    };
+    if io_error {
+        return ExitCode::from(2);
+    }
 
     // run diff
     let result: Vec<u8> = match params.format {
@@ -68,14 +91,28 @@ pub fn main(opts: Peekable<ArgsOs>) -> ExitCode {
             params.from.to_string_lossy(),
             params.to.to_string_lossy()
         );
-    } else if let Err(e) = io::stdout().write_all(&result) {
-        // let broken pipe pass, report other errors (issue #192)
-        if e.kind() != io::ErrorKind::BrokenPipe {
-            eprintln!("{e}");
-            return ExitCode::FAILURE;
+    } else {
+        let result = io::stdout().write_all(&result);
+        match result {
+            // This code is taken from coreutils.
+            // <https://github.com/uutils/coreutils/blob/main/src/uu/seq/src/seq.rs>
+            Ok(()) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::BrokenPipe => {
+                // GNU seq prints the Broken pipe message but still exits with status 0
+                // unless SIGPIPE was explicitly ignored, in which case it should fail.
+                let err = err.map_err_context(|| "write error".into());
+                uucore::show_error!("{err}");
+                #[cfg(unix)]
+                if uucore::signals::sigpipe_was_ignored() {
+                    uucore::error::set_exit_code(1);
+                }
+            }
+            Err(err) => {
+                eprintln!("{err}");
+                return ExitCode::FAILURE;
+            }
         }
     }
-
     if result.is_empty() {
         maybe_report_identical_files();
         ExitCode::SUCCESS

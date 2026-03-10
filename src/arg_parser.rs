@@ -5,8 +5,27 @@
 
 //! This is a generic parser for program arguments (operands and options).
 //!
-//! This generic parser is able to parse the options of all diffutils, e.g. 'cmp --options' or 'diff --options'. \
-//! The allowed options are passed as a list of static [AppOption]s, as they are known at compile time.
+//! The [Parser] is able to parse the options of all diffutils, e.g. `cmp --options` or `diff --options`.
+//!
+//! Features:
+//!
+//! - Allows options to be abbreviated, e.g. \--wi instead of \--width
+//! - Allows input like in GNU utils, e.g. the following are all identical:
+//!   - `diff --ignore-case --minimal --width=50 file_a file_b`
+//!   - `diff --ignore-case --minimal --width 50 file_a file_b`
+//!   - `diff -i -d -w 50 file_a file_b`
+//!   - `diff -id -w50 file_a file_b`
+//!   - `diff -idw50 file_a file_b`
+//! - A [NumberParser] is available, which parses option arguments
+//!   with optional byte units, e.g. =1024 or =1024KiB
+//! - Default handling for \--version and \--help
+//! - Returns the [ParsedOption]s or a [ParseError] Enum, which makes it library friendly.
+//! - Contains error handling for the typical parsing errors:
+//!   - missing and extra operands
+//!   - invalid, ambiguous or conflicting options
+//!   - missing or not allowed option arguments
+//! - Provides error text functions, e.g. add executable and 'Try \--help' to message.
+//!
 use std::{
     error::Error,
     ffi::{OsStr, OsString},
@@ -45,14 +64,21 @@ pub fn add_copyright(text: &str) -> String {
     format!("{text}\n{TEXT_COPYRIGHT}")
 }
 
-/// Writes the error message and adds the help hint "Try 'diff --help' for more information."
+/// Writes the error message and adds the help hint "Try 'diff \--help' for more information."
+///
+/// * exe: [Executable]
+/// * msg: The message to output. It will be preceded by 'executable: '.
+///   Sometimes the executable is not available during error message creation,
+///   so #EXE will be replaced by the name of the executable, e.g. 'diff'.
 ///
 /// This is the central output function. I affects all utils. \
 /// It allows to just use 'eprintln!("{e}");' in case of an error.
-pub fn format_error_test<T: Error>(executable: &Executable, error: &T) -> String {
+pub fn format_error_text<T: Error>(executable: &Executable, error: &T) -> String {
     // for messages the have the executable already
     let exe = format!("{executable}: ");
-    let msg = error.to_string();
+    let msg = error
+        .to_string()
+        .replace("#EXE", executable.to_string().as_str());
     if msg.starts_with(&exe) {
         format!("{msg}\n{exe}Try '{executable} --help' for more information.",)
     } else {
@@ -67,7 +93,7 @@ pub fn get_version_text(executable: &Executable) -> String {
 
 /// Convert a text into input for the parsers.
 ///
-/// This is for testing and allows to write a simple string "diff file_1 file_2 --width=50"
+/// This is for testing and allows to write a simple string `diff file_1 file_2 --width=50`
 /// to be converted in the input format the parser expects, like ArgsOs.
 #[allow(unused)]
 pub fn args_into_peekable_os_strings(args: &str) -> Peekable<std::vec::IntoIter<OsString>> {
@@ -111,7 +137,7 @@ pub struct AppOption {
 impl AppOption {
     /// formatted long option
     ///
-    /// Returns the long name formatted: "--option". \
+    /// Returns the long name formatted: `--option`. \
     /// There is inconsistency in GNU diffutils, if these are printed with or without quotes.
     pub fn format_long(&self) -> String {
         format!("--{}", self.long_name)
@@ -122,7 +148,7 @@ impl AppOption {
     /// There is inconsistency in GNU diffutils, if these are printed with or without quotes.
     ///
     ///  # Returns
-    /// * Some(short): "'--option' (-c)".
+    /// * Some(short): `'--option' (-c)`.
     /// * None: [Self::format_long]
     pub fn format_for_error_msg(&self) -> String {
         self.format_long()
@@ -148,7 +174,7 @@ impl AppOption {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParsedOption {
     pub app_option: &'static AppOption,
-    /// Argument of the option as string_lossy, e.g. the "1000kB" of "--bytes=1000kB".
+    /// Argument of the option as string_lossy, e.g. the "1000kB" of "\--bytes=1000kB".
     pub arg_for_option: Option<String>,
     /// Argument of the option as original OsString
     pub arg_for_option_os: Option<OsString>,
@@ -182,10 +208,10 @@ impl ParsedOption {
 
     /// This checks if an option requires an argument and if it already known.
     ///
-    /// * Case A: --long-option=argument: Argument is already parsed
-    /// * Case B: --long-option argument: Argument must be the next in the given args
-    /// * Case C: -bArgument: Argument is already parsed
-    /// * Case D: -b Argument: Argument must be the next in the given args
+    /// * Case A: `--long-option=argument`: Argument is already parsed
+    /// * Case B: `--long-option argument`: Argument must be the next in the given args
+    /// * Case C: `-bArgument`: Argument is already parsed
+    /// * Case D: `-b Argument`: Argument must be the next in the given args
     fn check_add_arg<I: Iterator<Item = OsString>>(
         &mut self,
         opts: &mut Peekable<I>,
@@ -245,7 +271,7 @@ impl Default for ParsedOption {
     }
 }
 
-/// To differentiate the user input, did he use -s or --silent.
+/// To differentiate the user input, did he use -s or \--silent.
 /// While this is technically no difference, the error message may vary.
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub enum OptionNameTypeUsed {
@@ -257,9 +283,8 @@ pub enum OptionNameTypeUsed {
 
 /// This is a generic parser for program arguments (operands and options),
 /// but without the executable.
-/// TODO rewrite doc
 ///
-/// This generic parser is able to parse the options of all diffutils, e.g. 'cmp --options' or 'diff --options'. \
+/// This generic parser is able to parse the options of all diffutils, e.g. `cmp --options` or `diff --options`. \
 /// The allowed options are passed as a list of static [AppOption]s, as they are known at compile time.
 ///
 /// # Example: read params for sdiff
@@ -299,8 +324,11 @@ impl Parser {
     ///
     /// The arguments must not contain the executable.
     ///
-    /// # Returns
-    /// TODO doc
+    /// The allowed options are passed as a list of static [AppOption]s, as they are known at compile time.
+    ///
+    /// # Returns Result
+    /// * Ok: [Parser] with [ParsedOption]s and operands (file names)
+    /// * Error: [ParseError]
     pub fn parse_params<I: Iterator<Item = OsString>>(
         app_options: &'static [AppOption],
         mut args: Peekable<I>,
@@ -431,7 +459,7 @@ impl Parser {
         Ok(parser)
     }
 
-    /// * param_os: expected to start with "--"
+    /// * param_os: expected to start with "\--"
     pub fn identify_option_from_partial_text(
         param_os: &OsStr,
         app_options: &'static [AppOption],
@@ -459,14 +487,14 @@ impl Parser {
         }
     }
 
-    /// Check if user requested the --help output.
+    /// Check if user requested the \--help output.
     pub fn is_help(&self) -> bool {
         self.options_parsed
             .iter()
             .any(|opt| *opt.app_option == OPT_HELP)
     }
 
-    /// Check if user requested the --version output.
+    /// Check if user requested the \--version output.
     pub fn is_version(&self) -> bool {
         self.options_parsed
             .iter()
@@ -479,7 +507,7 @@ impl Parser {
     }
 
     /// Split an OsString on Linux. On Windows this is not possible. \
-    /// This is required for options like --file-name=argument-non-utf-8
+    /// This is required for options like `--file-name=argument-non-utf-8`
     ///
     /// # Returns
     /// * A slice of the OsStr starting from `index`.
@@ -519,7 +547,7 @@ impl Parser {
 /// Contains all parser errors and their text messages.
 ///
 /// All errors can be output easily using the normal Display functionality.
-/// To format the error message for the typical diffutils output, use [write_err].
+/// To format the error message for the typical diffutils output, use [format_error_text].
 #[derive(Debug, Clone, PartialEq)]
 pub enum ParseError {
     /// When the long option is abbreviated, but does not have a unique match.
@@ -543,7 +571,9 @@ pub enum ParseError {
 
     /// number for an option argument incorrect
     InvalidValueNumber(ParsedOption),
+    #[allow(unused)] // Allow external usage (cmp)
     InvalidValueNumberUnit(ParsedOption),
+    #[allow(unused)] // Allow external usage (cmp)
     InvalidValueNumberOverflow(ParsedOption),
 
     /// 'executable' as first parameter missing.
@@ -560,6 +590,7 @@ pub enum ParseError {
     NoUnicode(OsString),
 
     /// Two options cannot be used together, e.g. cmp --silent and --verbose (output).
+    #[allow(unused)] // Allow external usage (cmp)
     OptionsIncompatible(&'static AppOption, &'static AppOption),
 
     /// Non-existent long option. This is "unrecognized" because the name can be abbreviated.
@@ -661,8 +692,10 @@ impl Display for ParseError {
     }
 }
 
+#[allow(unused)] // required for cmp
 pub struct NumberParser {}
 
+#[allow(unused)] // required for cmp
 impl NumberParser {
     /// Parses a number with an optional unit, e.g. 10MiB.
     ///
@@ -682,10 +715,7 @@ impl NumberParser {
                 if pos == 0 {
                     return Err(ParseError::InvalidValueNumber(parsed_option.clone()));
                 }
-                multiplier = match Self::parse_number_unit(&num_unit[pos..]) {
-                    Some(m) => m,
-                    None => return Err(ParseError::InvalidValueNumberUnit(parsed_option.clone())),
-                };
+                multiplier = Self::parse_number_unit(&num_unit[pos..], parsed_option)?;
                 &num_unit[0..pos]
             }
             None => {
@@ -726,8 +756,7 @@ impl NumberParser {
     /// Units up eo Exabyte (EiB) following GNU documentation: \
     /// <https://www.gnu.org/software/diffutils/manual/html_node/cmp-Options.html>.
     #[cfg(not(feature = "feat_allow_case_insensitive_number_units"))]
-    // #[allow(unused)] // required for cmp
-    pub fn parse_number_unit(unit: &str) -> Option<u64> {
+    fn parse_number_unit(unit: &str, parsed_option: &ParsedOption) -> Result<u64, ParseError> {
         let multiplier = match unit {
             "kB" | "KB" => 1_000,
             "k" | "K" | "KiB" | "kiB" => 1_024,
@@ -750,19 +779,18 @@ impl NumberParser {
             // "YB" => 1_000_000_000_000_000_000_000_000,
             // "Y" | "YiB" => 1_208_925_819_614_629_174_706_176,
             _ => {
-                return None;
+                return Err(ParseError::InvalidValueNumberUnit(parsed_option.clone()));
             }
         };
 
-        Some(multiplier)
+        Ok(multiplier)
     }
 
     /// Returns a multiplier depending on the given unit, e.g. 'KiB' -> 1024,
     /// which then can be used to calculate the final number of bytes.
     /// Following GNU documentation: https://www.gnu.org/software/diffutils/manual/html_node/cmp-Options.html
-    /// TODO case
     #[cfg(feature = "feat_allow_case_insensitive_number_units")]
-    pub fn parse_number_unit(unit: &str) -> Option<u64> {
+    fn parse_number_unit(unit: &str, parsed_option: &ParsedOption) -> Result<u64, ParseError> {
         // Note that GNU cmp advertises supporting up to Y, but fails if you try
         // to actually use anything beyond E.
         let unit = unit.to_owned().to_ascii_lowercase();
@@ -789,11 +817,11 @@ impl NumberParser {
             // "yb" => 1_000_000_000_000_000_000_000_000,
             // "y" | "yib" => 1_208_925_819_614_629_174_706_176,
             _ => {
-                return None;
+                return Err(ParseError::InvalidValueNumberUnit(parsed_option.clone()));
             }
         };
 
-        Some(multiplier)
+        Ok(multiplier)
     }
 }
 
@@ -836,7 +864,11 @@ impl Executable {
 
     /// Read the first arg (the executable) without moving the iterator of args.
     ///
-    /// Returns [Exec].
+    /// Returns
+    /// - Some: [Executable].
+    ///   - Diffutils: diff, cmp, sdiff, diff3 and patch
+    ///   - NotRecognized(OsString) for all other inputs
+    /// - None: only if no argument was found.
     pub fn from_args_os<I: Iterator<Item = OsString>>(
         args: &mut Peekable<I>,
         move_iter: bool,

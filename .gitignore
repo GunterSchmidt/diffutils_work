@@ -4,7 +4,6 @@ new.txt
 old.txt
 
 tools/app_option_generator/target
-tools/app_option_generator/cmp_help.options.txt
-tools/app_option_generator/diff_help.options.txt
-tools/app_option_generator/output.txt
-tools/app_option_generator/sdiff-help.options.txt
+tools/app_option_generator/*.txt
+tools/app_option_generator/*_help
+todo.md

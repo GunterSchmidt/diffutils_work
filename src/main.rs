@@ -11,19 +11,14 @@ use std::{
     process::ExitCode,
 };
 
-use crate::arg_parser::Executable;
-// use predicates::name;
+use diffutilslib::{arg_parser::Executable, cmp, diff3, sdiff};
 
-mod arg_parser;
-mod cmp;
 mod context_diff;
 mod diff;
-mod diff3;
 mod ed_diff;
 mod macros;
 mod normal_diff;
 mod params;
-mod sdiff;
 mod side_diff;
 mod unified_diff;
 mod utils;
