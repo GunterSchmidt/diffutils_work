@@ -10,14 +10,14 @@
 //
 // replaced = "*** fruits_old.txt\tTIMESTAMP\n
 //             --- fruits_new.txt\tTIMESTAMP\n";
+
 #[macro_export]
 macro_rules! assert_diff_eq {
     ($actual:expr, $expected:expr) => {{
-        use regex::Regex;
         use std::str;
 
         let diff = str::from_utf8(&$actual).unwrap();
-        let re = Regex::new(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+ [+-]\d{4}").unwrap();
+        let re = regex::Regex::new(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+ [+-]\d{4}").unwrap();
         let actual = re.replacen(diff, 2, "TIMESTAMP");
 
         assert_eq!(actual, $expected);

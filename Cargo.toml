@@ -100,13 +100,17 @@ readme = "README.package.md"
 version = "0.5.0"
 
 [workspace.dependencies]
+assert_cmd = "2.0.14"
 const_format = "0.2.35"
 # coreutils = "0.7.0"
 chrono = "0.4.38"
 diff_crate = { package = "diff", version = "0.1.13" }
+divan = { version = "4.3.0", package = "codspeed-divan-compat" }
 # itoa = "1.0.11"
+predicates = "3.1.0"
 pretty_assertions = "1.4.0"
-# regex = "1.10.4"
+rand = "0.10.0"
+regex = "1.10.4"
 same-file = "1.0.6"
 tempfile = "3.26.0"
 unicode-width = "0.2.0"
@@ -117,9 +121,9 @@ diff = {  package = "uu_diff", path = "src/uu/diff" }
 
 
 [dependencies]
+diff.workspace = true
 uucore.workspace = true
 uudiff.workspace = true
-# sdiff.workspace = true
 
 # * uutils
 # uu_test = { optional = true, package = "uu_test", path = "src/uu/test" }
@@ -129,11 +133,11 @@ diff3 = { package = "uu_diff3", path = "src/uu/diff3" }
 sdiff = { package = "uu_sdiff", path = "src/uu/sdiff" }
 
 [dev-dependencies]
-# assert_cmd = "2.0.14"
-# divan = { version = "4.3.0", package = "codspeed-divan-compat" }
+assert_cmd.workspace = true
+predicates.workspace = true
+regex.workspace = true
+tempfile.workspace = true
 # criterion = { version = "0.8.2", features = ["html_reports"] }
-# predicates = "3.1.0"
-# rand = "0.10.0"
 
 [profile.release]
 lto = true

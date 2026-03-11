@@ -24,9 +24,6 @@ path = "src/diff3.rs"
 
 [dependencies]
 const_format = { workspace = true }
-diff.workspace = true
-diff_crate = { workspace = true }
-unicode-width = { workspace = true }
 uucore = { workspace = true }
 uudiff = { workspace = true }
 # uucore = { workspace = true, features = [

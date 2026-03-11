@@ -86,21 +86,20 @@ pub fn uumain(args: impl uucore::Args) -> UResult<()> {
     // TODO: Maybe this is unnessecary? check in params
     let Some(executable) = Executable::from_args_os(&mut args, false) else {
         eprintln!("Expected utility name as first argument, got nothing.");
-        uucore::error::set_exit_code(1);
-        // TODO return Err(uucore::error::UError); // ExitCode::FAILURE
-        return Ok(()); // ExitCode::FAILURE
+        uucore::error::set_exit_code(2);
+        return Ok(());
     };
     match sdiff(args) {
         Ok(res) => match res {
-            SDiffOk::Different => uucore::error::set_exit_code(1), // ExitCode::FAILURE,
-            SDiffOk::Equal => uucore::error::set_exit_code(0),     //ExitCode::SUCCESS,
+            SDiffOk::Different => uucore::error::set_exit_code(1),
+            SDiffOk::Equal => uucore::error::set_exit_code(0),
             SDiffOk::Help => {
                 println!("{}", add_copyright(TEXT_HELP));
-                uucore::error::set_exit_code(0) //ExitCode::SUCCESS
+                uucore::error::set_exit_code(0)
             }
             SDiffOk::Version => {
                 println!("{}", get_version_text(&executable));
-                uucore::error::set_exit_code(0) //ExitCode::SUCCESS
+                uucore::error::set_exit_code(0)
             }
         },
         Err(e) => {
@@ -226,16 +225,6 @@ pub fn read_both_files(from: &OsString, to: &OsString) -> ResultReadBothFiles {
         Ok((from_content, to_content))
     } else {
         Err(read_errors)
-    }
-}
-
-impl Into<side_diff::Params> for &ParamsSDiff {
-    fn into(self) -> side_diff::Params {
-        side_diff::Params {
-            expand_tabs: self.expand_tabs,
-            tabsize: self.tabsize,
-            width: self.width,
-        }
     }
 }
 

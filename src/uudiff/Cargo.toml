@@ -30,6 +30,7 @@ feat_allow_case_insensitive_number_units = []
 [dependencies]
 chrono.workspace = true
 # coreutils.workspace = true
+# regex.workspace = true
 same-file.workspace = true
 unicode-width.workspace = true
 uucore.workspace = true

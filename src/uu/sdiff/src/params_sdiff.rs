@@ -6,6 +6,7 @@
 //! This module contains the Parser for sdiff arguments ([ParamsSDiff::parse_params]).
 use std::{ffi::OsString, iter::Peekable};
 
+use diff::side_diff;
 use uudiff::arg_parser::{
     AppOption, Executable, OPT_HELP, OPT_VERSION, ParseError, ParsedOption, Parser,
 };
@@ -344,6 +345,16 @@ impl ParamsSDiff {
         self.width = w;
 
         Ok(w)
+    }
+}
+
+impl Into<side_diff::Params> for &ParamsSDiff {
+    fn into(self) -> side_diff::Params {
+        side_diff::Params {
+            expand_tabs: self.expand_tabs,
+            tabsize: self.tabsize,
+            width: self.width,
+        }
     }
 }
 

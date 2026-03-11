@@ -1059,7 +1059,7 @@ mod tests {
     fn executable_diffutils_only() {
         // let cmd = "diffutils diff foo bar";
         let cmd = "diffutils";
-        let mut args = utils::str_to_vec_os_string(cmd).into_iter().peekable();
+        let mut args = utils::str_to_args(cmd).into_iter().peekable();
         let res = Executable::get_util(&mut args);
         match res {
             Ok(info) => assert_eq!(
@@ -1073,7 +1073,7 @@ mod tests {
     #[test]
     fn executable_diffutils_with_files() {
         let cmd = "diffutils diff foo bar";
-        let mut args = utils::str_to_vec_os_string(cmd).into_iter().peekable();
+        let mut args = utils::str_to_args(cmd).into_iter().peekable();
         let res = Executable::get_util(&mut args);
         match res {
             Ok(info) => {
@@ -1087,7 +1087,7 @@ mod tests {
     #[test]
     fn executable_only() {
         let cmd = "diff foo bar";
-        let mut args = utils::str_to_vec_os_string(cmd).into_iter().peekable();
+        let mut args = utils::str_to_args(cmd).into_iter().peekable();
         let res = Executable::get_util(&mut args);
         match res {
             Ok(info) => assert_eq!(info, ExecutableInfo::new(Executable::Diff, "diff", false)),

@@ -79,22 +79,21 @@ pub fn uumain(args: impl uucore::Args) -> UResult<()> {
     // TODO: Maybe this is unnessecary? check in params
     let Some(executable) = Executable::from_args_os(&mut args, false) else {
         eprintln!("Expected utility name as first argument, got nothing.");
-        uucore::error::set_exit_code(1);
-        // TODO return Err(uucore::error::UError); // ExitCode::FAILURE
-        return Ok(()); // ExitCode::FAILURE
+        uucore::error::set_exit_code(2);
+        return Ok(());
     };
 
     match diff3(args) {
         Ok(res) => match res {
-            DiffThreeOk::Different => uucore::error::set_exit_code(1), // ExitCode::FAILURE,
-            DiffThreeOk::Equal => uucore::error::set_exit_code(0),     //ExitCode::SUCCESS,
+            DiffThreeOk::Different => uucore::error::set_exit_code(1),
+            DiffThreeOk::Equal => uucore::error::set_exit_code(0),
             DiffThreeOk::Help => {
                 println!("{}", add_copyright(TEXT_HELP));
-                uucore::error::set_exit_code(0) //ExitCode::SUCCESS
+                uucore::error::set_exit_code(0)
             }
             DiffThreeOk::Version => {
                 println!("{}", get_version_text(&executable));
-                uucore::error::set_exit_code(0) //ExitCode::SUCCESS
+                uucore::error::set_exit_code(0)
             }
         },
         Err(e) => {

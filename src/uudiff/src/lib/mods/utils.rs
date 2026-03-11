@@ -110,12 +110,15 @@ pub fn report_failure_to_read_input_file(
 /// Helper function for tests
 /// # Returns
 /// A vec OsString which can be used instead of ArgsOs.
-pub fn str_to_vec_os_string(args: &str) -> Vec<OsString> {
-    let mut args_os = Vec::new();
-    for arg in args.split(' ') {
-        args_os.push(OsString::from(arg));
-    }
-    args_os
+pub fn str_to_args(args: &str) -> Vec<OsString> {
+    let s: Vec<OsString> = args
+        .split(" ")
+        .into_iter()
+        .filter(|s| !s.is_empty())
+        .map(|s| OsString::from(s))
+        .collect();
+
+    s
 }
 
 #[cfg(test)]

@@ -7,18 +7,6 @@ use std::{ffi::OsStr, process::ExitCode};
 
 use uudiff::arg_parser::Executable;
 
-// use diffutils::{arg_parser::Executable, cmp, diff3, sdiff};
-
-// mod context_diff;
-// mod diff;
-// mod ed_diff;
-// mod macros;
-// mod normal_diff;
-// mod params;
-// mod side_diff;
-// mod unified_diff;
-// mod utils;
-
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn usage(name: &str) {
@@ -47,7 +35,7 @@ fn main() -> ExitCode {
 
     let code = match executable {
         // Executable::Cmp => cmp::main(args),
-        // Executable::Diff => diff::main(args),
+        Executable::Diff => diff::uumain(args),
         Executable::DiffUtils(name) => second_arg_error(&name),
         Executable::Diff3 => diff3::uumain(args),
         // // Executable::Patch => todo!(),

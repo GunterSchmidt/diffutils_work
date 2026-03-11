@@ -19,18 +19,24 @@ readme.workspace = true
 name = "diff"
 path = "src/main.rs"
 
-# [lib]
-# path = "src/diff.rs"
+[lib]
+path = "src/diff.rs"
 
 [dependencies]
-const_format = { workspace = true }
+# const_format = { workspace = true }
 diff_crate = { workspace = true }
+regex = { workspace = true }
+same-file = { workspace = true }
+uucore = { workspace = true }
 uudiff = { workspace = true }
 unicode-width = { workspace = true }
 
 [dev-dependencies]
+divan = { workspace = true }
+pretty_assertions = { workspace = true }
+rand = { workspace = true }
+tempfile = { workspace = true }
 
-
-# [[bench]]
-# name = "sdiff_bench"
-# harness = false
+[[bench]]
+name = "diff_bench"
+harness = false
