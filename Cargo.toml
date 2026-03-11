@@ -102,11 +102,10 @@ version = "0.5.0"
 [workspace.dependencies]
 assert_cmd = "2.0.14"
 const_format = "0.2.35"
-# coreutils = "0.7.0"
 chrono = "0.4.38"
 diff_crate = { package = "diff", version = "0.1.13" }
 divan = { version = "4.3.0", package = "codspeed-divan-compat" }
-# itoa = "1.0.11"
+itoa = "1.0.11"
 predicates = "3.1.0"
 pretty_assertions = "1.4.0"
 rand = "0.10.0"
@@ -117,20 +116,21 @@ unicode-width = "0.2.0"
 uucore = "0.7.0"
 uudiff = { package = "uudiff", path = "src/uudiff" }
 diff = {  package = "uu_diff", path = "src/uu/diff" }
-# sdiff = { package = "uu_sdiff", path = "src/uu/sdiff" }
+sdiff = {  package = "uu_sdiff", path = "src/uu/sdiff" }
 
 
 [dependencies]
 diff.workspace = true
+sdiff.workspace = true
+# siff.workspace = true
 uucore.workspace = true
 uudiff.workspace = true
 
 # * uutils
 # uu_test = { optional = true, package = "uu_test", path = "src/uu/test" }
 #
-# diff = { optional = true, package = "uu_diff", path = "src/uu/diff" }
+cmp = { package = "uu_cmp", path = "src/uu/cmp" }
 diff3 = { package = "uu_diff3", path = "src/uu/diff3" }
-sdiff = { package = "uu_sdiff", path = "src/uu/sdiff" }
 
 [dev-dependencies]
 assert_cmd.workspace = true

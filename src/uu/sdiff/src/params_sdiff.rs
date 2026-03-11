@@ -348,16 +348,17 @@ impl ParamsSDiff {
     }
 }
 
-impl Into<side_diff::Params> for &ParamsSDiff {
-    fn into(self) -> side_diff::Params {
+impl From<&ParamsSDiff> for side_diff::Params {
+    fn from(val: &ParamsSDiff) -> Self {
         side_diff::Params {
-            expand_tabs: self.expand_tabs,
-            tabsize: self.tabsize,
-            width: self.width,
+            expand_tabs: val.expand_tabs,
+            tabsize: val.tabsize,
+            width: val.width,
         }
     }
 }
 
+// TODO tests are not called
 // Usually assert is used like assert_eq(test result, expected result).
 #[cfg(test)]
 mod tests {

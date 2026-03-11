@@ -1,4 +1,4 @@
-// #![allow(unused)]
+#![allow(unused)]
 // This file is part of the uutils diffutils package.
 //
 // For the full copyright and license information, please view the LICENSE-*
@@ -14,43 +14,63 @@
 const FILE_SIZE_KILO_BYTES: [u64; 4] = [100, 1 * MB, 10 * MB, 25 * MB];
 // const FILE_SIZE_KILO_BYTES: [u64; 3] = [100, 1 * MB, 5 * MB];
 // Empty String to use TempDir (files will be removed after test) or specify dir to keep generated files
-const TEMP_DIR: &str = "";
+const TEMP_DIR: &str = "/home/gunnar/DevNoSync/data";
 const NUM_DIFF: u64 = 4;
 // just for FILE_SIZE_KILO_BYTES
 const MB: u64 = 1_000;
 const CHANGE_CHAR: u8 = b'#';
 
-#[cfg(not(feature = "feat_bench_not_cmp"))]
 mod diffutils_cmp {
-    use diffutilslib::cmp;
     use divan::Bencher;
+    use uu_cmp::params_cmp::ParamsCmp;
+    use uudiff::{arg_parser::Executable, utils::str_to_args};
 
-    use crate::{binary, prepare::*, FILE_SIZE_KILO_BYTES};
+    use crate::{FILE_SIZE_KILO_BYTES, binary, prepare::*};
+
+    // bench the time it takes to parse the command line arguments
+    #[divan::bench]
+    fn cmp_parser(bencher: Bencher) {
+        let cmd = "cmd file_1.txt file_2.txt -bl n10M --ignore-initial=100KiB:1MiB";
+        let args = str_to_args(&cmd).into_iter().peekable();
+        bencher.with_inputs(|| args.clone()).bench_values(
+            |params: std::iter::Peekable<std::vec::IntoIter<std::ffi::OsString>>| {
+                ParamsCmp::parse_params(&Executable::Cmp, params)
+            },
+        );
+    }
+
+    // // test the impact on the benchmark if not converting the cmd to Vec<OsString> (doubles for parse)
+    #[divan::bench]
+    fn cmp_parser_no_prepare() {
+        let cmd = "cmd file_1.txt file_2.txt -bl n10M --ignore-initial=100KiB:1MiB";
+        let args = str_to_args(&cmd).into_iter().peekable();
+        let _ = ParamsCmp::parse_params(&Executable::Cmp, args);
+    }
 
     // bench equal, full file read
     #[divan::bench(args = FILE_SIZE_KILO_BYTES)]
     fn cmp_compare_files_equal(bencher: Bencher, kb: u64) {
         let (from, to) = get_context().get_test_files_equal(kb);
-        let cmd = format!("{from} {to}");
-        let args = str_to_options(&cmd).into_iter();
+        let cmd = format!("cmp {from} {to}");
+        let args = str_to_args(&cmd).into_iter();
 
         bencher
             // .with_inputs(|| prepare::cmp_params_identical_testfiles(lines))
             .with_inputs(|| args.clone())
-            .bench_refs(|params| cmp::cmp(params.peekable()));
+            .bench_refs(|params| uu_cmp::cmp(params.peekable()));
     }
 
     // bench different; cmp exits on first difference
     #[divan::bench(args = FILE_SIZE_KILO_BYTES)]
     fn cmp_compare_files_different(bencher: Bencher, bytes: u64) {
         let (from, to) = get_context().get_test_files_different(bytes);
-        let cmd = format!("{from} {to}");
-        let args = str_to_options(&cmd).into_iter();
+        let cmd = format!("cmp {from} {to}");
+        let args = str_to_args(&cmd).into_iter();
 
         bencher
             // .with_inputs(|| prepare::cmp_params_identical_testfiles(lines))
             .with_inputs(|| args.clone())
-            .bench_refs(|params| cmp::cmp(params.peekable()));
+            .bench_refs(|params| uu_cmp::cmp(params.peekable()));
     }
 
     // bench original GNU cmp
@@ -67,104 +87,25 @@ mod diffutils_cmp {
     // bench the compiled release version
     #[divan::bench(args = FILE_SIZE_KILO_BYTES)]
     fn cmd_cmp_release_equal(bencher: Bencher, bytes: u64) {
+        // TODO search for src, then shorten path, different directory divider,check windows
+        let dir = std::env::current_dir().unwrap();
+        let path = dir.to_string_lossy();
+        let path = path.trim_end_matches("src/uu/cmp");
+        let prg = path.to_string() + "target/release/diffutils";
+
+        // panic!("dir {prg:?}");
         let (from, to) = get_context().get_test_files_equal(bytes);
         let args_str = format!("cmp {from} {to}");
 
         bencher
             // .with_inputs(|| prepare::cmp_params_identical_testfiles(lines))
             .with_inputs(|| args_str.clone())
-            .bench_refs(|cmd_args| binary::bench_binary("target/release/diffutils", cmd_args));
-    }
-}
-
-#[cfg(not(feature = "feat_bench_not_diff"))]
-mod diffutils_diff {
-    // use std::hint::black_box;
-
-    use crate::{binary, prepare::*, FILE_SIZE_KILO_BYTES};
-    // use diffutilslib::params;
-    use divan::Bencher;
-
-    // bench the actual compare
-    // TODO diff does not have a diff function
-    //     #[divan::bench(args = [100_000,10_000])]
-    //     fn diff_compare_files(bencher: Bencher, bytes: u64) {
-    //         let (from, to) = get_context().get_test_files_equal(kb);
-    //         let cmd = format!("{from} {to}");
-    //         let args = str_to_options(&cmd).into_iter();
-    //
-    //         bencher
-    //             // .with_inputs(|| prepare::cmp_params_identical_testfiles(lines))
-    //             .with_inputs(|| args.clone())
-    //             .bench_refs(|params| diff::diff(params.peekable()));
-    //     }
-
-    // bench original GNU diff
-    #[divan::bench(args = FILE_SIZE_KILO_BYTES)]
-    fn cmd_diff_gnu_equal(bencher: Bencher, bytes: u64) {
-        let (from, to) = get_context().get_test_files_equal(bytes);
-        let args_str = format!("{from} {to}");
-        bencher
-            // .with_inputs(|| prepare::cmp_params_identical_testfiles(lines))
-            .with_inputs(|| args_str.clone())
-            .bench_refs(|cmd_args| binary::bench_binary("diff", cmd_args));
-    }
-
-    // bench the compiled release version
-    #[divan::bench(args = FILE_SIZE_KILO_BYTES)]
-    fn cmd_diff_release_equal(bencher: Bencher, bytes: u64) {
-        let (from, to) = get_context().get_test_files_equal(bytes);
-        let args_str = format!("diff {from} {to}");
-
-        bencher
-            // .with_inputs(|| prepare::cmp_params_identical_testfiles(lines))
-            .with_inputs(|| args_str.clone())
-            .bench_refs(|cmd_args| binary::bench_binary("target/release/diffutils", cmd_args));
-    }
-}
-
-mod parser {
-    use std::hint::black_box;
-
-    use diffutilslib::{arg_parser::Executable, cmp::params_cmp::ParamsCmp, params};
-    use divan::Bencher;
-
-    use crate::prepare::str_to_options;
-
-    // bench the time it takes to parse the command line arguments
-    #[divan::bench]
-    fn cmp_parser(bencher: Bencher) {
-        let cmd = "cmd file_1.txt file_2.txt -bl n10M --ignore-initial=100KiB:1MiB";
-        let args = str_to_options(&cmd).into_iter().peekable();
-        bencher.with_inputs(|| args.clone()).bench_values(
-            |params: std::iter::Peekable<std::vec::IntoIter<std::ffi::OsString>>| {
-                black_box(ParamsCmp::parse_params(&Executable::Cmp, params))
-            },
-        );
-    }
-
-    // // test the impact on the benchmark if not converting the cmd to Vec<OsString> (doubles for parse)
-    // #[divan::bench]
-    // fn cmp_parser_no_prepare() {
-    //     let cmd = "cmd file_1.txt file_2.txt -bl n10M --ignore-initial=100KiB:1MiB";
-    //     let args = str_to_options(&cmd).into_iter().peekable();
-    //     let _ = cmp::parse_params(args);
-    // }
-
-    // bench the time it takes to parse the command line arguments
-    #[divan::bench]
-    fn diff_parser(bencher: Bencher) {
-        let cmd = "diff file_1.txt file_2.txt -s --brief --expand-tabs --width=100";
-        let args = str_to_options(&cmd).into_iter().peekable();
-        bencher
-            .with_inputs(|| args.clone())
-            .bench_values(|data| black_box(params::parse_params(data)));
+            .bench_refs(|cmd_args| binary::bench_binary(&prg, cmd_args));
     }
 }
 
 mod prepare {
     use std::{
-        ffi::OsString,
         fs::{self, File},
         io::{BufWriter, Write},
         path::Path,
@@ -243,17 +184,6 @@ mod prepare {
         })
     }
 
-    pub fn str_to_options(opt: &str) -> Vec<OsString> {
-        let s: Vec<OsString> = opt
-            .split(" ")
-            .into_iter()
-            .filter(|s| !s.is_empty())
-            .map(|s| OsString::from(s))
-            .collect();
-
-        s
-    }
-
     /// Generates two test files for comparison with <bytes> size.
     ///
     /// Each line consists of 10 words with 5 letters, giving a line length of 60 bytes.
@@ -297,11 +227,7 @@ mod prepare {
             0
         } else {
             let c = n_lines / num_differences;
-            if c == 0 {
-                1
-            } else {
-                c
-            }
+            if c == 0 { 1 } else { c }
         };
         // Use a larger 128KB buffer for massive files
         let mut writer_from = BufWriter::with_capacity(128 * 1024, file_from);
@@ -359,10 +285,10 @@ mod prepare {
 mod binary {
     use std::process::Command;
 
-    use crate::prepare::str_to_options;
+    use uudiff::utils::str_to_args;
 
     pub fn bench_binary(program: &str, cmd_args: &str) -> std::process::ExitStatus {
-        let args = str_to_options(cmd_args);
+        let args = str_to_args(cmd_args);
         Command::new(program)
             .args(args)
             .status()

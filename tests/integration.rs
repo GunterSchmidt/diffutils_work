@@ -583,7 +583,7 @@ mod cmp {
         let b_path = tmp_dir.path().join("b");
         let mut b = File::create(&b_path).unwrap();
         b.write_all(b"abcdefghijkl\n").unwrap();
-        dbg!(&a_path);
+        // dbg!(&a_path);
 
         let mut cmd = cargo_bin_cmd!("diffutils");
         cmd.arg("cmp");

@@ -905,7 +905,7 @@ impl Executable {
     /// # Returns
     /// * Ok: [ExecutableInfo]
     /// * Err: Error message. These are no file name or no UTF-8 and
-    /// are expected to happen very rarely.
+    ///   are expected to happen very rarely.
     ///
     /// # Panics
     /// Panics if the binary path cannot be determined ([Self::binary_path]).
@@ -913,7 +913,7 @@ impl Executable {
         mut args: &mut Peekable<I>,
     ) -> Result<ExecutableInfo, String> {
         // let mut args = uucore::args_os().peekable();
-        let path = Self::binary_path(&mut args);
+        let path = Self::binary_path(args);
         let Some(n_os) = path.file_stem() else {
             return Err(format!("'{}' has no file name", path.to_string_lossy()));
         };
@@ -921,27 +921,24 @@ impl Executable {
 
         // Get first executable, can be diffutils or one of the utils
         let mut executable = Executable::from(&name_os);
-        match &executable {
-            Executable::NotRecognized(name) => {
-                // not a tool name, possibly --help
-                let Some(name) = name_os.to_str() else {
-                    return Err(format!(
-                        "'{}' does have Non-UTF characters",
-                        name_os.to_string_lossy()
-                    ));
-                };
-                if name.ends_with("utils") {
-                    executable = Self::DiffUtils(name_os);
-                } else {
-                    // something totally different
-                    return Ok(ExecutableInfo {
-                        executable,
-                        path,
-                        is_coreutils: false,
-                    });
-                }
+        if let Executable::NotRecognized(name) = &executable {
+            // not a tool name, possibly --help
+            let Some(name) = name_os.to_str() else {
+                return Err(format!(
+                    "'{}' does have Non-UTF characters",
+                    name_os.to_string_lossy()
+                ));
+            };
+            if name.ends_with("utils") {
+                executable = Self::DiffUtils(name_os);
+            } else {
+                // something totally different
+                return Ok(ExecutableInfo {
+                    executable,
+                    path,
+                    is_coreutils: false,
+                });
             }
-            _ => {}
         }
         let started_by_diffutils = match &executable {
             Executable::DiffUtils(_) => {
@@ -1024,7 +1021,7 @@ impl Display for Executable {
 /// * executable: Executable derived from the name, e.g. 'diff' -> Executable::Diff.
 /// * path: full path of the executable and its name
 /// * is_coreutils: set if called with 'diffutil', then executable is not 'diffutil',
-/// but the following argument.
+///   but the following argument.
 #[derive(Debug, PartialEq)]
 pub struct ExecutableInfo {
     pub executable: Executable,
@@ -1035,14 +1032,14 @@ pub struct ExecutableInfo {
 impl ExecutableInfo {
     pub fn new(executable: Executable, path: &str, is_coreutils: bool) -> Self {
         Self {
-            executable: executable,
+            executable,
             path: PathBuf::from(path),
             is_coreutils,
         }
     }
     pub fn new_test(executable: Executable) -> Self {
         Self {
-            executable: executable,
+            executable,
             path: PathBuf::from("diffutils"),
             is_coreutils: true,
         }

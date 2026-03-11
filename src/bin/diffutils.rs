@@ -34,7 +34,7 @@ fn main() -> ExitCode {
     };
 
     let code = match executable {
-        // Executable::Cmp => cmp::main(args),
+        Executable::Cmp => cmp::uumain(args),
         Executable::Diff => diff::uumain(args),
         Executable::DiffUtils(name) => second_arg_error(&name),
         Executable::Diff3 => diff3::uumain(args),

@@ -3,20 +3,18 @@
 // For the full copyright and license information, please view the LICENSE-*
 // files that was distributed with this source code.
 
-// pub mod params;
-
 pub mod params_cmp;
-use crate::arg_parser::{
-    add_copyright, format_error_text, get_version_text, Executable, ParseError,
-};
-use crate::cmp::params_cmp::{CmpParseOk, ParamsCmp};
-use crate::utils::format_failure_to_read_input_file;
-use std::env::{self, ArgsOs};
+use crate::params_cmp::{CmpParseOk, ParamsCmp};
+use std::env::{self};
 use std::ffi::OsString;
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::iter::Peekable;
-use std::process::ExitCode;
 use std::{cmp, fs, io};
+use uucore::error::UResult;
+use uudiff::arg_parser::{
+    Executable, ParseError, add_copyright, format_error_text, get_version_text,
+};
+use uudiff::utils::format_failure_to_read_input_file;
 
 /// for --bytes, so really large number limits can be expressed, like 1Y.
 pub type BytesLimitU64 = u64;
@@ -66,22 +64,25 @@ pub const TEXT_HELP: &str = r#"
 //     1 means some differences were found,
 //     and 2 means trouble.
 // TODO first param util: Executable,
-pub fn main(mut args: Peekable<ArgsOs>) -> ExitCode {
-    let Some(executable) = Executable::from_args_os(&mut args, true) else {
+#[uucore::main]
+pub fn uumain(args: impl uucore::Args) -> UResult<()> {
+    let mut args = args.peekable();
+    let Some(executable) = Executable::from_args_os(&mut args, false) else {
         eprintln!("Expected utility name as first argument, got nothing.");
-        return ExitCode::FAILURE;
+        uucore::error::set_exit_code(2);
+        return Ok(());
     };
     match cmp(args) {
         Ok(res) => match res {
-            CmpOk::Different => ExitCode::FAILURE,
-            CmpOk::Equal => ExitCode::SUCCESS,
+            CmpOk::Different => uucore::error::set_exit_code(1),
+            CmpOk::Equal => uucore::error::set_exit_code(0),
             CmpOk::Help => {
                 println!("{}", add_copyright(TEXT_HELP));
-                ExitCode::SUCCESS
+                uucore::error::set_exit_code(0);
             }
             CmpOk::Version => {
                 println!("{}", get_version_text(&executable));
-                ExitCode::SUCCESS
+                uucore::error::set_exit_code(0);
             }
         },
         Err(e) => {
@@ -92,16 +93,18 @@ pub fn main(mut args: Peekable<ArgsOs>) -> ExitCode {
                 _ => format_error_text(&executable, &e),
             };
             eprintln!("{msg}");
-            ExitCode::from(2)
+            uucore::error::set_exit_code(2);
         }
     }
+
+    Ok(())
 }
 
 /// This is the full sdiff call.
 ///
 /// The first arg needs to be the executable, then the operands and options.
 pub fn cmp<I: Iterator<Item = OsString>>(mut args: Peekable<I>) -> Result<CmpOk, CmpError> {
-    let Some(executable) = Executable::from_args_os(&mut args, false) else {
+    let Some(executable) = Executable::from_args_os(&mut args, true) else {
         return Err(ParseError::NoExecutable.into());
     };
     // read params
@@ -111,7 +114,7 @@ pub fn cmp<I: Iterator<Item = OsString>>(mut args: Peekable<I>) -> Result<CmpOk,
         CmpParseOk::Version => return Ok(CmpOk::Version),
     };
 
-    dbg!("{params:?}");
+    // dbg!("{params:?}");
 
     // compare files
     cmp_compare(&params)
@@ -242,10 +245,10 @@ pub fn cmp_compare(params: &ParamsCmp) -> Result<CmpOk, CmpError> {
 
             start_of_line = *last == b'\n';
 
-            if let Some(bytes_limit) = params.bytes_limit {
-                if at_byte > bytes_limit {
-                    break;
-                }
+            if let Some(bytes_limit) = params.bytes_limit
+                && at_byte > bytes_limit
+            {
+                break;
             }
 
             from.consume(consumed);
@@ -286,10 +289,10 @@ pub fn cmp_compare(params: &ParamsCmp) -> Result<CmpOk, CmpError> {
 
             at_byte += 1;
 
-            if let Some(max_bytes) = params.bytes_limit {
-                if at_byte > max_bytes {
-                    break;
-                }
+            if let Some(max_bytes) = params.bytes_limit
+                && at_byte > max_bytes
+            {
+                break;
             }
         }
 
@@ -339,14 +342,14 @@ fn prepare_reader(
         }
     };
 
-    if skip > 0 {
-        if let Err(e) = io::copy(&mut reader.by_ref().take(skip), &mut io::sink()) {
-            return Err(format_failure_to_read_input_file(
-                &params.executable.to_os_string(),
-                path,
-                &e,
-            ));
-        }
+    if skip > 0
+        && let Err(e) = io::copy(&mut reader.by_ref().take(skip), &mut io::sink())
+    {
+        return Err(format_failure_to_read_input_file(
+            &params.executable.to_os_string(),
+            path,
+            &e,
+        ));
     }
 
     Ok(reader)
@@ -669,5 +672,5 @@ pub fn strip_io_error(error: &std::io::Error) -> String {
     // std::io::Error's display trait outputs "{detail} (os error {code})"
     // but we want only the {detail} (error string) part
     let err = error.to_string();
-    format!("{}", err.split(" (os error").next().unwrap_or(&err))
+    err.split(" (os error").next().unwrap_or(&err).to_string()
 }

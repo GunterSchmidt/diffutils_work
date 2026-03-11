@@ -113,9 +113,8 @@ pub fn report_failure_to_read_input_file(
 pub fn str_to_args(args: &str) -> Vec<OsString> {
     let s: Vec<OsString> = args
         .split(" ")
-        .into_iter()
         .filter(|s| !s.is_empty())
-        .map(|s| OsString::from(s))
+        .map(OsString::from)
         .collect();
 
     s

@@ -1,7 +1,7 @@
 [package]
 name = "uu_diff3"
-description = "sdiff ~ (uutils) decode/encode input (sdiff file compare)"
-repository = "https://github.com/uutils/diffutils/tree/main/src/uu/sdiff"
+description = "diff3 ~ (uutils) decode/encode input (diff3 file compare)"
+repository = "https://github.com/uutils/diffutils/tree/main/src/uu/diff3"
 version.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -16,7 +16,7 @@ readme.workspace = true
 # workspace = true
 
 [[bin]]
-name = "sdiff"
+name = "diff3"
 path = "src/main.rs"
 
 [lib]

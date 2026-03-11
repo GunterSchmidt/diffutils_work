@@ -65,31 +65,18 @@ mod diffutils_diff {
     // bench the compiled release version
     #[divan::bench(args = FILE_SIZE_KILO_BYTES)]
     fn cmd_diff_release_equal(bencher: Bencher, bytes: u64) {
+        // TODO search for src, then shorten path, different directory divider,check windows
+        let dir = std::env::current_dir().unwrap();
+        let path = dir.to_string_lossy();
+        let path = path.trim_end_matches("src/uu/diff");
+        let prg = path.to_string() + "target/release/diffutils";
         let (from, to) = get_context().get_test_files_equal(bytes);
         let args_str = format!("diff {from} {to}");
 
         bencher
             // .with_inputs(|| prepare::cmp_params_identical_testfiles(lines))
             .with_inputs(|| args_str.clone())
-            .bench_refs(|cmd_args| binary::bench_binary("target/release/diffutils", cmd_args));
-    }
-}
-
-mod parser {
-    use std::hint::black_box;
-
-    use divan::Bencher;
-    use uu_diff::params;
-    use uudiff::utils::str_to_args;
-
-    // bench the time it takes to parse the command line arguments
-    #[divan::bench]
-    fn diff_parser(bencher: Bencher) {
-        let cmd = "diff file_1.txt file_2.txt -s --brief --expand-tabs --width=100";
-        let args = str_to_args(&cmd).into_iter().peekable();
-        bencher
-            .with_inputs(|| args.clone())
-            .bench_values(|data| black_box(params::parse_params(data)));
+            .bench_refs(|cmd_args| binary::bench_binary(&prg, cmd_args));
     }
 }
 

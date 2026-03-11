@@ -1,3 +1,9 @@
+#![allow(clippy::collapsible_if)]
+// This file is part of the uutils diffutils package.
+//
+// For the full copyright and license information, please view the LICENSE-*
+// files that was distributed with this source code.
+
 use std::ffi::OsString;
 use std::iter::Peekable;
 use std::path::PathBuf;
@@ -47,12 +53,12 @@ impl Default for Params {
     }
 }
 
-impl Into<side_diff::Params> for &Params {
-    fn into(self) -> side_diff::Params {
-        side_diff::Params {
-            expand_tabs: self.expand_tabs,
-            tabsize: self.tabsize,
-            width: self.width,
+impl From<&Params> for side_diff::Params {
+    fn from(param: &Params) -> Self {
+        Self {
+            expand_tabs: param.expand_tabs,
+            tabsize: param.tabsize,
+            width: param.width,
         }
     }
 }

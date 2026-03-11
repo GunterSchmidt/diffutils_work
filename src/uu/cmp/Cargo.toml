@@ -1,7 +1,7 @@
 [package]
-name = "uu_diff"
-description = "diff ~ (uutils) decode/encode input (diff file compare)"
-repository = "https://github.com/uutils/diffutils/tree/main/src/uu/diff"
+name = "uu_cmp"
+description = "cmp ~ (uutils) decode/encode input (cmp file compare)"
+repository = "https://github.com/uutils/diffutils/tree/main/src/uu/cmp"
 version.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -16,18 +16,23 @@ readme.workspace = true
 # workspace = true
 
 [[bin]]
-name = "diff"
+name = "cmp"
 path = "src/main.rs"
 
 [lib]
-path = "src/diff.rs"
+path = "src/cmp.rs"
+
+[features]
+# TODO How to sync over all modules?
+# instead of limiting to KiB, MiB, etc, one can write kib, mib, Mb or whatever case.
+feat_allow_case_insensitive_number_units = []
 
 [dependencies]
 # const_format = { workspace = true }
 diff_crate = { workspace = true }
+itoa = { workspace = true }
 regex = { workspace = true }
 same-file = { workspace = true }
-# sdiff = { workspace = true }
 uucore = { workspace = true }
 uudiff = { workspace = true }
 unicode-width = { workspace = true }
@@ -39,5 +44,5 @@ rand = { workspace = true }
 tempfile = { workspace = true }
 
 [[bench]]
-name = "diff_bench"
+name = "cmp_bench"
 harness = false

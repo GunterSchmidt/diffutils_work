@@ -106,26 +106,6 @@ pub struct Params {
     pub width: usize,
 }
 
-// impl From<&crate::params::Params> for Params {
-//     fn from(param: &crate::params::Params) -> Self {
-//         Self {
-//             expand_tabs: param.expand_tabs,
-//             tabsize: param.tabsize,
-//             width: param.width,
-//         }
-//     }
-// }
-//
-// impl From<&ParamsSDiff> for Params {
-//     fn from(param: &ParamsSDiff) -> Self {
-//         Self {
-//             expand_tabs: param.expand_tabs,
-//             tabsize: param.tabsize,
-//             width: param.width,
-//         }
-//     }
-// }
-
 fn format_tabs_and_spaces<T: Write>(
     from: usize,
     to: usize,

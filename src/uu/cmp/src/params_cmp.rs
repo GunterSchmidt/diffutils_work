@@ -5,12 +5,12 @@
 
 use std::{ffi::OsString, iter::Peekable};
 
-use crate::{
-    arg_parser::{
-        AppOption, Executable, NumberParser, OptionNameTypeUsed, ParseError, ParsedOption, Parser,
-        OPT_HELP, OPT_VERSION,
-    },
-    cmp::{BytesLimitU64, SkipU64},
+#[cfg(not(target_os = "windows"))]
+use crate::is_stdout_dev_null;
+use crate::{BytesLimitU64, SkipU64};
+use uudiff::arg_parser::{
+    AppOption, Executable, NumberParser, OPT_HELP, OPT_VERSION, OptionNameTypeUsed, ParseError,
+    ParsedOption, Parser,
 };
 
 pub type ResultParamsCmpParse = Result<CmpParseOk, ParseError>;
@@ -200,7 +200,7 @@ impl ParamsCmp {
         // Do as GNU cmp, and completely disable printing if we are
         // outputting to /dev/null.
         #[cfg(not(target_os = "windows"))]
-        if crate::cmp::is_stdout_dev_null() {
+        if is_stdout_dev_null() {
             params.silent = true;
             params.verbose = false;
             params.print_bytes = false;
@@ -345,7 +345,7 @@ impl ParamsCmp {
 // Usually assert is used like assert_eq(result, desired_result).
 #[cfg(test)]
 mod tests {
-    use crate::arg_parser::OPT_VERSION;
+    use uudiff::arg_parser::OPT_VERSION;
 
     use super::*;
 
@@ -665,8 +665,7 @@ mod tests {
                 "error must contain: \"{msg}\"\nactual error: \"{e}\""
             ),
         }
-        let msg =
-            "invalid --bytes value '99999999999999999999999999999999999999999999999999999999999' (too large)";
+        let msg = "invalid --bytes value '99999999999999999999999999999999999999999999999999999999999' (too large)";
         match parse("cmp -n 99999999999999999999999999999999999999999999999999999999999 foo bar") {
             Ok(_) => assert!(false, "Should not be ok!"),
             Err(e) => assert!(
@@ -717,8 +716,7 @@ mod tests {
         // Failure cases
         // Number too large
         // TODO This tests for the new error message which is different from GNU cmp
-        let msg =
-            "invalid --ignore-initial value '99999999999999999999999999999999999999999999999999999999999' (too large)";
+        let msg = "invalid --ignore-initial value '99999999999999999999999999999999999999999999999999999999999' (too large)";
         match parse("cmp -i 99999999999999999999999999999999999999999999999999999999999 foo bar") {
             Ok(_) => assert!(false, "Should not be ok!"),
             Err(e) => assert!(
