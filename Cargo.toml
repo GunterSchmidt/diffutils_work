@@ -116,13 +116,12 @@ unicode-width = "0.2.0"
 uucore = "0.7.0"
 uudiff = { package = "uudiff", path = "src/uudiff" }
 diff = {  package = "uu_diff", path = "src/uu/diff" }
-sdiff = {  package = "uu_sdiff", path = "src/uu/sdiff" }
+sdiff = {package = "uu_sdiff", path = "src/uu/sdiff" }
 
 
 [dependencies]
 diff.workspace = true
 sdiff.workspace = true
-# siff.workspace = true
 uucore.workspace = true
 uudiff.workspace = true
 
@@ -131,6 +130,7 @@ uudiff.workspace = true
 #
 cmp = { package = "uu_cmp", path = "src/uu/cmp" }
 diff3 = { package = "uu_diff3", path = "src/uu/diff3" }
+# sdiff = {optional = true,   package = "uu_sdiff", path = "src/uu/sdiff" }
 
 [dev-dependencies]
 assert_cmd.workspace = true
