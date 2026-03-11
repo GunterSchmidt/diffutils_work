@@ -9,7 +9,7 @@
 use std::io::Write;
 
 pub fn main() {
-    let code = uu_sdiff::uumain(uucore::args_os());
+    let code = uu_diff3::uumain(uucore::args_os());
     if let Err(e) = std::io::stdout().flush() {
         {
             eprint!("Error flushing stdout: {e}");

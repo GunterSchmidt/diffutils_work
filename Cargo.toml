@@ -125,6 +125,7 @@ uudiff.workspace = true
 # uu_test = { optional = true, package = "uu_test", path = "src/uu/test" }
 #
 # diff = { optional = true, package = "uu_diff", path = "src/uu/diff" }
+diff3 = { package = "uu_diff3", path = "src/uu/diff3" }
 sdiff = { package = "uu_sdiff", path = "src/uu/sdiff" }
 
 [dev-dependencies]

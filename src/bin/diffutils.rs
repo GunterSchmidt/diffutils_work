@@ -3,13 +3,7 @@
 // For the full copyright and license information, please view the LICENSE-*
 // files that was distributed with this source code.
 
-use std::{
-    env::ArgsOs,
-    ffi::OsStr,
-    iter::Peekable,
-    path::{Path, PathBuf},
-    process::ExitCode,
-};
+use std::{ffi::OsStr, process::ExitCode};
 
 use uudiff::arg_parser::Executable;
 
@@ -55,7 +49,7 @@ fn main() -> ExitCode {
         // Executable::Cmp => cmp::main(args),
         // Executable::Diff => diff::main(args),
         Executable::DiffUtils(name) => second_arg_error(&name),
-        // Executable::Diff3 => diff3::main(args),
+        Executable::Diff3 => diff3::uumain(args),
         // // Executable::Patch => todo!(),
         Executable::SDiff => sdiff::uumain(args),
         _ => {

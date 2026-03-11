@@ -83,6 +83,7 @@ pub const TEXT_HELP: &str = const_format::concatcp!(
 pub fn uumain(args: impl uucore::Args) -> UResult<()> {
     let mut args = args.peekable();
 
+    // TODO: Maybe this is unnessecary? check in params
     let Some(executable) = Executable::from_args_os(&mut args, false) else {
         eprintln!("Expected utility name as first argument, got nothing.");
         uucore::error::set_exit_code(1);
@@ -122,6 +123,7 @@ pub fn uumain(args: impl uucore::Args) -> UResult<()> {
 ///
 /// The first arg needs to be the executable, then the operands and options.
 pub fn sdiff<I: Iterator<Item = OsString>>(mut args: Peekable<I>) -> Result<SDiffOk, SDiffError> {
+    // TODO: Maybe this is unnessecary? check in params
     let Some(executable) = Executable::from_args_os(&mut args, true) else {
         return Err(ParseError::NoExecutable.into());
     };
@@ -237,6 +239,7 @@ impl Into<side_diff::Params> for &ParamsSDiff {
     }
 }
 
+// ToDo check Help working
 /// The Ok result of sdiff.
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum SDiffOk {

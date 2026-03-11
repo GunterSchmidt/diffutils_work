@@ -1,0 +1,60 @@
+[package]
+name = "uu_diff3"
+description = "sdiff ~ (uutils) decode/encode input (sdiff file compare)"
+repository = "https://github.com/uutils/diffutils/tree/main/src/uu/sdiff"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+readme.workspace = true
+
+# [lints]
+# workspace = true
+
+[[bin]]
+name = "sdiff"
+path = "src/main.rs"
+
+[lib]
+path = "src/diff3.rs"
+
+[dependencies]
+const_format = { workspace = true }
+diff.workspace = true
+diff_crate = { workspace = true }
+unicode-width = { workspace = true }
+uucore = { workspace = true }
+uudiff = { workspace = true }
+# uucore = { workspace = true, features = [
+#   "colors",
+#   "entries",
+#   "format",
+#   "fs",
+#   "fsext",
+#   "fsxattr",
+#   "parser-size",
+#   "parser-glob",
+#   "quoting-style",
+#   "time",
+#   "version-cmp",
+# ] }
+
+[dev-dependencies]
+
+[features]
+# instead of limiting to KiB, MiB, etc, one can write kib, mib, Mb or whatever case.
+feat_allow_case_insensitive_number_units = []
+# # Enables a check on options defined in NOT_YET_IMPLEMENTED.
+# # If on the parser will return an error message in these cases.
+# # This is preferable when running the util as unsupported options
+# # are pointed out to the user, but can make tests fail. 
+feat_check_not_yet_implemented = []
+
+
+# [[bench]]
+# name = "sdiff_bench"
+# harness = false

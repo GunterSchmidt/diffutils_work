@@ -190,6 +190,7 @@ checksum = "56254986775e3233ffa9c4d7d3faaf6d36a2c09d30b20687e9f88bc8bafc16c8"
 name = "diffutils"
 version = "0.5.0"
 dependencies = [
+ "uu_diff3",
  "uu_sdiff",
  "uucore",
  "uudiff",
@@ -747,6 +748,18 @@ dependencies = [
  "const_format",
  "diff",
  "unicode-width",
+ "uudiff",
+]
+
+[[package]]
+name = "uu_diff3"
+version = "0.5.0"
+dependencies = [
+ "const_format",
+ "diff",
+ "unicode-width",
+ "uu_diff",
+ "uucore",
  "uudiff",
 ]
 
