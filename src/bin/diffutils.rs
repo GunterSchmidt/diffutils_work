@@ -11,17 +11,19 @@ use std::{
     process::ExitCode,
 };
 
-use diffutilslib::{arg_parser::Executable, cmp, diff3, sdiff};
+use uudiff::arg_parser::Executable;
 
-mod context_diff;
-mod diff;
-mod ed_diff;
-mod macros;
-mod normal_diff;
-mod params;
-mod side_diff;
-mod unified_diff;
-mod utils;
+// use diffutils::{arg_parser::Executable, cmp, diff3, sdiff};
+
+// mod context_diff;
+// mod diff;
+// mod ed_diff;
+// mod macros;
+// mod normal_diff;
+// mod params;
+// mod side_diff;
+// mod unified_diff;
+// mod utils;
 
 /// # Panics
 /// Panics if the binary path cannot be determined
@@ -68,11 +70,11 @@ fn main() -> ExitCode {
         second_arg_error(exe_name)
     };
     match executable {
-        Executable::Cmp => cmp::main(args),
-        Executable::Diff => diff::main(args),
-        Executable::Diff3 => diff3::main(args),
-        // Executable::Patch => todo!(),
-        Executable::SDiff => sdiff::main(args),
+        // Executable::Cmp => cmp::main(args),
+        // Executable::Diff => diff::main(args),
+        // Executable::Diff3 => diff3::main(args),
+        // // Executable::Patch => todo!(),
+        // Executable::SDiff => sdiff::main(args),
         _ => {
             eprintln!("{executable}: utility not supported");
             ExitCode::from(2)

@@ -6,8 +6,8 @@
 //! This module contains the Parser for sdiff arguments ([ParamsSDiff::parse_params]).
 use std::{ffi::OsString, iter::Peekable};
 
-use crate::arg_parser::{
-    AppOption, Executable, ParseError, ParsedOption, Parser, OPT_HELP, OPT_VERSION,
+use uudiff::arg_parser::{
+    AppOption, Executable, OPT_HELP, OPT_VERSION, ParseError, ParsedOption, Parser,
 };
 
 // use crate::{

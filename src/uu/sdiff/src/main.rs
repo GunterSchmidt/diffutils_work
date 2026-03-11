@@ -5,23 +5,31 @@
 
 //! This module holds the core compare logic of sdiff.
 pub mod params_sdiff;
+pub mod side_diff;
 
 use std::{
-    env::ArgsOs,
     ffi::OsString,
     fs,
-    io::{self, stdout, Read, Write},
+    io::{self, Read, Write, stdout},
     iter::Peekable,
     process::ExitCode,
 };
 
-use crate::{
+use uudiff::{
     arg_parser::{
-        add_copyright, format_error_text, get_version_text, Executable, ParseError,
-        TEXT_HELP_FOOTER,
+        Executable, ParseError, TEXT_HELP_FOOTER, add_copyright, format_error_text,
+        get_version_text,
     },
-    sdiff::params_sdiff::{ParamsSDiff, SDiffParseOk},
-    side_diff, utils,
+    utils,
+};
+
+// use xxx;
+// use diff::side_diff;
+// use side_diff;
+
+use crate::{
+    params_sdiff::{ParamsSDiff, SDiffParseOk},
+    // side_diff,
 };
 
 // This contains the hard coded 'sdiff'. If required this needs to be replaced with the executable.
@@ -74,7 +82,10 @@ pub const TEXT_HELP: &str = const_format::concatcp!(
 /// * 0 if inputs are identical
 /// * 1 if inputs are different
 /// * 2 in error case
-pub fn main(mut args: Peekable<ArgsOs>) -> ExitCode {
+// pub fn main(mut args: Peekable<ArgsOs>) -> ExitCode {
+pub fn main() -> ExitCode {
+    let mut args = std::env::args_os().peekable();
+
     let Some(executable) = Executable::from_args_os(&mut args, false) else {
         eprintln!("Expected utility name as first argument, got nothing.");
         return ExitCode::FAILURE;
@@ -208,6 +219,16 @@ pub fn read_both_files(from: &OsString, to: &OsString) -> ResultReadBothFiles {
         Ok((from_content, to_content))
     } else {
         Err(read_errors)
+    }
+}
+
+impl Into<side_diff::Params> for &ParamsSDiff {
+    fn into(self) -> side_diff::Params {
+        side_diff::Params {
+            expand_tabs: self.expand_tabs,
+            tabsize: self.tabsize,
+            width: self.width,
+        }
     }
 }
 

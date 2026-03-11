@@ -4,11 +4,11 @@
 // files that was distributed with this source code.
 
 use core::cmp::{max, min};
-use diff::Result;
+use diff_crate::Result;
 use std::{io::Write, vec};
 use unicode_width::UnicodeWidthStr;
 
-use crate::sdiff::params_sdiff::ParamsSDiff;
+// use crate::sdiff::params_sdiff::ParamsSDiff;
 
 const GUTTER_WIDTH_MIN: usize = 3;
 
@@ -106,25 +106,25 @@ pub struct Params {
     pub width: usize,
 }
 
-impl From<&crate::params::Params> for Params {
-    fn from(param: &crate::params::Params) -> Self {
-        Self {
-            expand_tabs: param.expand_tabs,
-            tabsize: param.tabsize,
-            width: param.width,
-        }
-    }
-}
-
-impl From<&ParamsSDiff> for Params {
-    fn from(param: &ParamsSDiff) -> Self {
-        Self {
-            expand_tabs: param.expand_tabs,
-            tabsize: param.tabsize,
-            width: param.width,
-        }
-    }
-}
+// impl From<&crate::params::Params> for Params {
+//     fn from(param: &crate::params::Params) -> Self {
+//         Self {
+//             expand_tabs: param.expand_tabs,
+//             tabsize: param.tabsize,
+//             width: param.width,
+//         }
+//     }
+// }
+//
+// impl From<&ParamsSDiff> for Params {
+//     fn from(param: &ParamsSDiff) -> Self {
+//         Self {
+//             expand_tabs: param.expand_tabs,
+//             tabsize: param.tabsize,
+//             width: param.width,
+//         }
+//     }
+// }
 
 fn format_tabs_and_spaces<T: Write>(
     from: usize,
@@ -376,7 +376,7 @@ pub fn diff<T: Write>(
     More studies are needed to cover GNU diff side by side with 100% accuracy, which is one of
     the goals of this project : )
     */
-    for result in diff::slice(&left_lines, &right_lines) {
+    for result in diff_crate::slice(&left_lines, &right_lines) {
         match result {
             Result::Left(left_ln) => push_output(left_ln, b"", b'<', output, &config).unwrap(),
             Result::Right(right_ln) => push_output(b"", right_ln, b'>', output, &config).unwrap(),
@@ -603,7 +603,7 @@ mod tests {
             let mut buf = vec![];
 
             let gb18030 = b"\x63\x61\x66\xA8\x80"; // some random chinese encoding
-                                                   //                                   ^ é char, start multi byte
+            //                                   ^ é char, start multi byte
             process_half_line(gb18030, 4, false, false, &config, &mut buf).unwrap();
             assert_eq!(buf, b"\x63\x61\x66\xA8 "); // break the encoding of 'é' letter
         }
