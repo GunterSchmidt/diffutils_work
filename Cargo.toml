@@ -101,6 +101,7 @@ version = "0.5.0"
 
 [workspace.dependencies]
 const_format = "0.2.35"
+# coreutils = "0.7.0"
 chrono = "0.4.38"
 diff_crate = { package = "diff", version = "0.1.13" }
 # itoa = "1.0.11"
@@ -109,20 +110,22 @@ pretty_assertions = "1.4.0"
 same-file = "1.0.6"
 tempfile = "3.26.0"
 unicode-width = "0.2.0"
-# uucore = "0.7.0"
+uucore = "0.7.0"
 uudiff = { package = "uudiff", path = "src/uudiff" }
-sdiff = { package = "uu_sdiff", path = "src/uu/sdiff" }
+diff = {  package = "uu_diff", path = "src/uu/diff" }
+# sdiff = { package = "uu_sdiff", path = "src/uu/sdiff" }
 
 
 [dependencies]
+uucore.workspace = true
 uudiff.workspace = true
-sdiff.workspace = true
+# sdiff.workspace = true
 
 # * uutils
 # uu_test = { optional = true, package = "uu_test", path = "src/uu/test" }
 #
 # diff = { optional = true, package = "uu_diff", path = "src/uu/diff" }
-# sdiff = { package = "uu_sdiff", path = "src/uu/sdiff" }
+sdiff = { package = "uu_sdiff", path = "src/uu/sdiff" }
 
 [dev-dependencies]
 # assert_cmd = "2.0.14"

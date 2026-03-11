@@ -3,15 +3,15 @@
 // For the full copyright and license information, please view the LICENSE-*
 // files that was distributed with this source code.
 
-use crate::params::{parse_params, Format};
+use crate::params::{Format, parse_params};
 use crate::utils::report_failure_to_read_input_file;
 use crate::{context_diff, ed_diff, normal_diff, side_diff, unified_diff};
 use std::env::ArgsOs;
 use std::ffi::OsString;
 use std::fs;
-use std::io::{self, stdout, Read, Write};
+use std::io::{self, Read, Write, stdout};
 use std::iter::Peekable;
-use std::process::{exit, ExitCode};
+use std::process::{ExitCode, exit};
 use uucore::error::FromIo;
 
 // Exit codes are documented at

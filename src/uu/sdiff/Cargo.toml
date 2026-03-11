@@ -19,16 +19,29 @@ readme.workspace = true
 name = "sdiff"
 path = "src/main.rs"
 
-# [lib]
-# path = "src/sdiff.rs"
+[lib]
+path = "src/sdiff.rs"
 
 [dependencies]
 const_format = { workspace = true }
-# xxx = {  package = "uu_diff", path = "../diff" }
-uudiff = { workspace = true }
-
+diff.workspace = true
 diff_crate = { workspace = true }
 unicode-width = { workspace = true }
+uucore = { workspace = true }
+uudiff = { workspace = true }
+# uucore = { workspace = true, features = [
+#   "colors",
+#   "entries",
+#   "format",
+#   "fs",
+#   "fsext",
+#   "fsxattr",
+#   "parser-size",
+#   "parser-glob",
+#   "quoting-style",
+#   "time",
+#   "version-cmp",
+# ] }
 
 [dev-dependencies]
 

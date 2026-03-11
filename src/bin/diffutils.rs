@@ -25,21 +25,6 @@ use uudiff::arg_parser::Executable;
 // mod unified_diff;
 // mod utils;
 
-/// # Panics
-/// Panics if the binary path cannot be determined
-fn binary_path(args: &mut Peekable<ArgsOs>) -> PathBuf {
-    match args.peek() {
-        Some(ref s) if !s.is_empty() => PathBuf::from(s),
-        _ => std::env::current_exe().unwrap(),
-    }
-}
-
-/// #Panics
-/// Panics if path has no UTF-8 valid name
-fn name(binary_path: &Path) -> &OsStr {
-    binary_path.file_stem().unwrap()
-}
-
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn usage(name: &str) {
@@ -56,28 +41,27 @@ fn second_arg_error(name: &OsStr) -> ! {
 }
 
 fn main() -> ExitCode {
-    let mut args = std::env::args_os().peekable();
+    let mut args = uucore::args_os().peekable();
 
-    let exe_path = binary_path(&mut args);
-    let exe_name = name(&exe_path);
-
-    if exe_name == "diffutils" {
-        // Discard the item we peeked.
-        let _ = args.next();
+    let executable = match Executable::get_util(&mut args) {
+        Ok(info) => info.executable,
+        Err(e) => {
+            eprintln!("{e}");
+            std::process::exit(2);
+        }
     };
 
-    let Some(executable) = Executable::from_args_os(&mut args, false) else {
-        second_arg_error(exe_name)
-    };
-    match executable {
+    let code = match executable {
         // Executable::Cmp => cmp::main(args),
         // Executable::Diff => diff::main(args),
+        Executable::DiffUtils(name) => second_arg_error(&name),
         // Executable::Diff3 => diff3::main(args),
         // // Executable::Patch => todo!(),
-        // Executable::SDiff => sdiff::main(args),
+        Executable::SDiff => sdiff::uumain(args),
         _ => {
             eprintln!("{executable}: utility not supported");
-            ExitCode::from(2)
+            2
         }
-    }
+    };
+    ExitCode::from(code as u8)
 }

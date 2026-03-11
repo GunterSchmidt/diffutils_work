@@ -31,6 +31,7 @@ use std::{
     ffi::{OsStr, OsString},
     fmt::Display,
     iter::Peekable,
+    path::PathBuf,
 };
 
 // TODO finalize copyright
@@ -826,15 +827,17 @@ impl NumberParser {
 }
 
 /// Differentiates the utilities included in DiffUtil
-/// and replaces executable as OsString.
+/// and replaces executable (OsString).
 ///
-/// This allows easy output of the executable name with
+/// This allows easy matching on the utility and the
+/// name can be easily written with:
 /// ```format!("{}", params.executable)```
 /// without calling ```to_string_lossy()``` each time.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Executable {
     Cmp,
     Diff,
+    DiffUtils(OsString),
     Diff3,
     Patch,
     SDiff,
@@ -879,13 +882,108 @@ impl Executable {
             args.peek().map(Self::from)
         }
     }
+
+    /// Gets the binary path from command line arguments
+    /// # Panics
+    /// Panics if the binary path cannot be determined
+    // Taken from coreutils::validation, but rewritten to peek only.
+    pub fn binary_path<I: Iterator<Item = OsString>>(mut args: &mut Peekable<I>) -> PathBuf {
+        match args.peek() {
+            Some(ref s) if !s.is_empty() => PathBuf::from(s),
+            _ => std::env::current_exe().unwrap(),
+        }
+    }
+
+    // /// Extracts the binary name from a path
+    // pub fn name(binary_path: &std::path::Path) -> Option<&str> {
+    //     binary_path.file_stem()?.to_str()
+    // }
+
+    /// Returns the executable and iters the args, so that the last
+    /// executables becomes the first argument.
+    ///
+    /// # Returns
+    /// * Ok: [ExecutableInfo]
+    /// * Err: Error message. These are no file name or no UTF-8 and
+    /// are expected to happen very rarely.
+    ///
+    /// # Panics
+    /// Panics if the binary path cannot be determined ([Self::binary_path]).
+    pub fn get_util<I: Iterator<Item = OsString>>(
+        mut args: &mut Peekable<I>,
+    ) -> Result<ExecutableInfo, String> {
+        // let mut args = uucore::args_os().peekable();
+        let path = Self::binary_path(&mut args);
+        let Some(n_os) = path.file_stem() else {
+            return Err(format!("'{}' has no file name", path.to_string_lossy()));
+        };
+        let name_os = n_os.to_os_string();
+
+        // Get first executable, can be diffutils or one of the utils
+        let mut executable = Executable::from(&name_os);
+        match &executable {
+            Executable::NotRecognized(name) => {
+                // not a tool name, possibly --help
+                let Some(name) = name_os.to_str() else {
+                    return Err(format!(
+                        "'{}' does have Non-UTF characters",
+                        name_os.to_string_lossy()
+                    ));
+                };
+                if name.ends_with("utils") {
+                    executable = Self::DiffUtils(name_os);
+                } else {
+                    // something totally different
+                    return Ok(ExecutableInfo {
+                        executable,
+                        path,
+                        is_coreutils: false,
+                    });
+                }
+            }
+            _ => {}
+        }
+        let started_by_diffutils = match &executable {
+            Executable::DiffUtils(_) => {
+                args.next();
+                if let Some(name) = args.peek() {
+                    executable = name.into();
+                }
+                true
+            }
+            // Executable::NotRecognized(name) => {
+            //     // some unknown name
+            //     false
+            // }
+            _ => false,
+        };
+
+        let info = ExecutableInfo {
+            executable,
+            path,
+            is_coreutils: started_by_diffutils,
+        };
+
+        Ok(info)
+    }
+
+    pub fn diffutils_default() -> Executable {
+        Executable::DiffUtils(OsString::from("diffutils"))
+    }
 }
 
 impl From<&OsString> for Executable {
-    fn from(executable: &OsString) -> Self {
+    fn from(value: &OsString) -> Self {
+        value.as_os_str().into()
+    }
+}
+
+impl From<&OsStr> for Executable {
+    fn from(executable: &OsStr) -> Self {
         match executable.to_str() {
             Some("cmp") => Executable::Cmp,
             Some("diff") => Executable::Diff,
+            Some("diffutils") => Executable::diffutils_default(),
             Some("diff3") => Executable::Diff3,
             Some("patch") => Executable::Patch,
             Some("sdiff") => Executable::SDiff,
@@ -894,16 +992,106 @@ impl From<&OsString> for Executable {
     }
 }
 
+// impl From<&str> for Executable {
+//     fn from(executable: &str) -> Self {
+//         match executable {
+//             "cmp"=> Executable::Cmp,
+//             "diff"=> Executable::Diff,
+//             "diff3" => Executable::Diff3,
+//             "patch" => Executable::Patch,
+//             "sdiff" => Executable::SDiff,
+//             _ => Executable::NotRecognized(OsString::from(executable)),
+//         }
+//     }
+// }
+
 impl Display for Executable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let name = match self {
             Executable::Cmp => "cmp",
             Executable::Diff => "diff",
+            Executable::DiffUtils(name) => &name.to_string_lossy(),
             Executable::Diff3 => "diff3",
-            Executable::SDiff => "sdiff",
             Executable::Patch => "patch",
+            Executable::SDiff => "sdiff",
             Executable::NotRecognized(name) => &name.to_string_lossy(),
         };
         write!(f, "{name}")
+    }
+}
+
+/// Info about the current executable
+/// * executable: Executable derived from the name, e.g. 'diff' -> Executable::Diff.
+/// * path: full path of the executable and its name
+/// * is_coreutils: set if called with 'diffutil', then executable is not 'diffutil',
+/// but the following argument.
+#[derive(Debug, PartialEq)]
+pub struct ExecutableInfo {
+    pub executable: Executable,
+    pub path: PathBuf,
+    pub is_coreutils: bool,
+}
+
+impl ExecutableInfo {
+    pub fn new(executable: Executable, path: &str, is_coreutils: bool) -> Self {
+        Self {
+            executable: executable,
+            path: PathBuf::from(path),
+            is_coreutils,
+        }
+    }
+    pub fn new_test(executable: Executable) -> Self {
+        Self {
+            executable: executable,
+            path: PathBuf::from("diffutils"),
+            is_coreutils: true,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::utils;
+
+    use super::*;
+
+    #[test]
+    fn executable_diffutils_only() {
+        // let cmd = "diffutils diff foo bar";
+        let cmd = "diffutils";
+        let mut args = utils::str_to_vec_os_string(cmd).into_iter().peekable();
+        let res = Executable::get_util(&mut args);
+        match res {
+            Ok(info) => assert_eq!(
+                info,
+                ExecutableInfo::new_test(Executable::diffutils_default())
+            ),
+            Err(_) => assert!(false, "Not Ok"),
+        }
+    }
+
+    #[test]
+    fn executable_diffutils_with_files() {
+        let cmd = "diffutils diff foo bar";
+        let mut args = utils::str_to_vec_os_string(cmd).into_iter().peekable();
+        let res = Executable::get_util(&mut args);
+        match res {
+            Ok(info) => {
+                assert_eq!(info, ExecutableInfo::new_test(Executable::Diff));
+                assert_eq!(args.next().unwrap().to_string_lossy(), "diff");
+            }
+            Err(_) => assert!(false, "Not Ok"),
+        }
+    }
+
+    #[test]
+    fn executable_only() {
+        let cmd = "diff foo bar";
+        let mut args = utils::str_to_vec_os_string(cmd).into_iter().peekable();
+        let res = Executable::get_util(&mut args);
+        match res {
+            Ok(info) => assert_eq!(info, ExecutableInfo::new(Executable::Diff, "diff", false)),
+            Err(_) => assert!(false, "Not Ok"),
+        }
     }
 }

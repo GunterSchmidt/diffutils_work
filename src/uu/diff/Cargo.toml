@@ -20,7 +20,7 @@ name = "diff"
 path = "src/main.rs"
 
 # [lib]
-# path = "src/sdiff.rs"
+# path = "src/diff.rs"
 
 [dependencies]
 const_format = { workspace = true }
