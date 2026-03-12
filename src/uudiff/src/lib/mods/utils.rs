@@ -85,15 +85,17 @@ pub fn format_failure_to_read_input_file(
 ) -> String {
     // std::io::Error's display trait outputs "{detail} (os error {code})"
     // but we want only the {detail} (error string) part
-    let err = error.to_string();
-    // let error_code_re = Regex::new(r"\ \(os\ error\ \d+\)$").unwrap();
     format!(
         "{}: {}: {}",
         executable.to_string_lossy(),
         filepath.to_string_lossy(),
-        // error_code_re.replace(error.to_string().as_str(), ""),
-        err.split(" (os error").next().unwrap_or(&err)
+        format_io_error(&error),
     )
+}
+
+pub fn format_io_error(error: &dyn std::error::Error) -> String {
+    let s = error.to_string();
+    s.split(" (os error").next().unwrap_or(&s).to_string()
 }
 
 pub fn report_failure_to_read_input_file(

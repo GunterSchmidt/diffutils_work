@@ -16,7 +16,7 @@ use std::ffi::OsString;
 use std::fs;
 use std::io::{self, Read, Write, stdout};
 use uucore::error::{FromIo, UResult};
-use uudiff::utils::report_failure_to_read_input_file;
+use uudiff::utils::{format_io_error, report_failure_to_read_input_file};
 
 // Exit codes are documented at
 // https://www.gnu.org/software/diffutils/manual/html_node/Invoking-diff.html.
@@ -120,8 +120,8 @@ pub fn uumain(args: impl uucore::Args) -> UResult<()> {
                     uucore::error::set_exit_code(1);
                 }
             }
-            Err(err) => {
-                eprintln!("{err}");
+            Err(error) => {
+                eprintln!("{}", format_io_error(&error));
                 uucore::error::set_exit_code(1);
                 return Ok(());
             }

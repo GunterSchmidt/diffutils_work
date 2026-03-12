@@ -14,7 +14,7 @@ use uucore::error::UResult;
 use uudiff::arg_parser::{
     Executable, ParseError, add_copyright, format_error_text, get_version_text,
 };
-use uudiff::utils::format_failure_to_read_input_file;
+use uudiff::utils::{format_failure_to_read_input_file, format_io_error};
 
 /// for --bytes, so really large number limits can be expressed, like 1Y.
 pub type BytesLimitU64 = u64;
@@ -277,7 +277,7 @@ pub fn cmp_compare(params: &ParamsCmp) -> Result<CmpOk, CmpError> {
                     })?;
                     output.clear();
                 } else {
-                    report_difference(from_byte, to_byte, at_byte, at_line, params);
+                    report_difference(from_byte, to_byte, at_byte, at_line, params)?;
                     return Ok(CmpOk::Different);
                 }
             }
@@ -552,9 +552,9 @@ fn report_difference(
     at_byte: BytesLimitU64,
     at_line: u64,
     params: &ParamsCmp,
-) {
+) -> Result<(), String> {
     if params.silent {
-        return;
+        return Ok(());
     }
 
     let term = if is_posix_locale() && !params.print_bytes {
@@ -579,7 +579,16 @@ fn report_difference(
             format_visible_byte(to_byte)
         );
     }
-    println!();
+    // Instead of println!(), which panics in case of error (> /dev/full).
+    let mut stdout = io::stdout();
+    if let Err(e) = writeln!(stdout) {
+        return Err(format_io_error(&e));
+    };
+    if let Err(e) = stdout.flush() {
+        return Err(format_io_error(&e));
+    };
+
+    Ok(())
 }
 
 #[cfg(not(target_os = "windows"))]
